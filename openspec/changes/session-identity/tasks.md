@@ -42,6 +42,6 @@
 
 ## 7. 整合驗證
 
-- [ ] 7.1 執行 `go test ./...` 確認全部測試通過
-- [ ] 7.2 手動執行 `tt setup` 確認 `~/.claude/settings.json` 的 hook 指令已更新
-- [ ] 7.3 觸發一次 Claude Code UserPromptSubmit hook，確認 `~/.tt/data.db` 中 session 的 `process_pid`、`process_start`、`conversation_id` 欄位有值
+- [x] 7.1 執行 `go test ./...` 確認全部測試通過
+- [x] 7.2 手動執行 `tt setup` 確認 `~/.claude/settings.json` 的 hook 指令已更新
+- [x] 7.3 觸發一次 Claude Code UserPromptSubmit hook，確認 `~/.tt/data.db` 中 session 的 `process_pid`、`process_start`、`conversation_id` 欄位有值
