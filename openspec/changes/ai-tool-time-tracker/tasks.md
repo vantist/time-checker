@@ -26,10 +26,10 @@
 
 ## 4. 定價計算（`internal/pricing`）
 
-- [ ] 4.1 **[TDD]** 寫 `internal/pricing/pricing_test.go`：測試 `claude-sonnet-4-6` 的 `estimated_cost_usd` 計算（參照 spec cost-estimation Scenario 1 的具體數值）
-- [ ] 4.2 實作 `internal/pricing/pricing.go`：hard-code 定價表（含 haiku、sonnet、opus），`Calculate(model, inputTokens, outputTokens, cacheRead, cacheCreation int) *float64`，通過 4.1 測試
-- [ ] 4.3 **[TDD]** 寫測試：未知 model 回傳 `nil`（NULL）
-- [ ] 4.4 通過 4.3 測試
+- [x] 4.1 **[TDD]** 寫 `internal/pricing/pricing_test.go`：測試 `claude-sonnet-4-6` 的 `estimated_cost_usd` 計算（參照 spec cost-estimation Scenario 1 的具體數值）
+- [x] 4.2 實作 `internal/pricing/pricing.go`：hard-code 定價表（含 haiku、sonnet、opus），`Calculate(model, inputTokens, outputTokens, cacheRead, cacheCreation int) *float64`，通過 4.1 測試
+- [x] 4.3 **[TDD]** 寫測試：未知 model 回傳 `nil`（NULL）
+- [x] 4.4 通過 4.3 測試
 
 ## 5. 工作項目標記（`tt work`）
 
