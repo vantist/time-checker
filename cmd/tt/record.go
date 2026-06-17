@@ -55,7 +55,7 @@ var recordResponseCmd = &cobra.Command{
 	Use:   "response",
 	Short: "Record a response/stop event",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sessionID, tokensJSON, err := resolveResponseInput(cmd)
+		sessionID, tokensJSON, model, err := resolveResponseInput(cmd)
 		if err != nil {
 			return err
 		}
@@ -67,7 +67,7 @@ var recordResponseCmd = &cobra.Command{
 		}
 		defer conn.Close()
 
-		return recorder.RecordResponseSilent(conn, sessionID, tokensJSON)
+		return recorder.RecordResponseSilent(conn, sessionID, tokensJSON, model)
 	},
 }
 
@@ -130,7 +130,7 @@ func resolvePromptInput(cmd *cobra.Command) (recorder.PromptInput, error) {
 	}, nil
 }
 
-func resolveResponseInput(cmd *cobra.Command) (sessionID, tokensJSON string, err error) {
+func resolveResponseInput(cmd *cobra.Command) (sessionID, tokensJSON, model string, err error) {
 	stdin, _ := readStdinJSON()
 
 	sessionID, _ = cmd.Flags().GetString("session")
@@ -141,16 +141,21 @@ func resolveResponseInput(cmd *cobra.Command) (sessionID, tokensJSON string, err
 			sessionID = stdin.SessionID
 		}
 		if tokensJSON == "" && stdin.TranscriptPath != "" {
-			tokensJSON = extractTokensFromTranscript(stdin.TranscriptPath)
+			tokensJSON, model = extractFromTranscript(stdin.TranscriptPath)
 		}
 	}
-	return sessionID, tokensJSON, nil
+	return sessionID, tokensJSON, model, nil
 }
 
-// extractTokensFromTranscript reads the transcript JSONL and returns the usage
-// from the last assistant message as a flat JSON string.
-func extractTokensFromTranscript(path string) string {
-	// expand ~ if present
+// extractFromTranscript reads the transcript JSONL and returns the summed
+// token usage across all API calls in the last user turn as a flat JSON string,
+// plus the model from the last non-sidechain assistant entry.
+//
+// Claude Code writes multiple assistant entries per API call (one per content
+// block: thinking/text/tool_use), all sharing identical usage stats. We
+// deduplicate by (input, output, cache_read, cache_creation) before summing
+// so each API call is counted exactly once.
+func extractFromTranscript(path string) (tokensJSON, model string) {
 	if len(path) >= 2 && path[:2] == "~/" {
 		home, err := os.UserHomeDir()
 		if err == nil {
@@ -160,7 +165,7 @@ func extractTokensFromTranscript(path string) string {
 
 	f, err := os.Open(path)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	defer f.Close()
 
@@ -171,36 +176,78 @@ func extractTokensFromTranscript(path string) string {
 		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	}
 	type transcriptEntry struct {
-		Type    string `json:"type"`
-		Message struct {
+		Type        string `json:"type"`
+		IsSidechain bool   `json:"isSidechain"`
+		Message     struct {
+			Model string      `json:"model"`
 			Usage usageFields `json:"usage"`
 		} `json:"message"`
 	}
 
-	var last *usageFields
+	// Collect all entries, then work backwards from the end.
+	var all []transcriptEntry
 	dec := json.NewDecoder(f)
 	for dec.More() {
 		var entry transcriptEntry
 		if err := dec.Decode(&entry); err != nil {
 			continue
 		}
-		if entry.Type == "assistant" {
-			u := entry.Message.Usage
-			last = &u
+		all = append(all, entry)
+	}
+
+	// Find the index of the last non-sidechain user entry; assistant entries
+	// after it belong to the current turn.
+	lastUserIdx := -1
+	for i := len(all) - 1; i >= 0; i-- {
+		if all[i].Type == "user" && !all[i].IsSidechain {
+			lastUserIdx = i
+			break
 		}
 	}
-	if last == nil {
-		return ""
+
+	// Extract model from the last non-sidechain assistant entry.
+	for i := len(all) - 1; i > lastUserIdx; i-- {
+		e := all[i]
+		if e.Type == "assistant" && !e.IsSidechain && e.Message.Model != "" {
+			model = e.Message.Model
+			break
+		}
+	}
+
+	// Deduplicate assistant entries by usage tuple (same tuple = same API call),
+	// then sum across unique API calls.
+	type usageKey struct{ in, out, read, create int }
+	seen := make(map[usageKey]bool)
+	var total usageFields
+	for i := lastUserIdx + 1; i < len(all); i++ {
+		e := all[i]
+		if e.Type != "assistant" || e.IsSidechain {
+			continue
+		}
+		u := e.Message.Usage
+		key := usageKey{u.InputTokens, u.OutputTokens, u.CacheReadInputTokens, u.CacheCreationInputTokens}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		total.InputTokens += u.InputTokens
+		total.OutputTokens += u.OutputTokens
+		total.CacheReadInputTokens += u.CacheReadInputTokens
+		total.CacheCreationInputTokens += u.CacheCreationInputTokens
+	}
+
+	if total.InputTokens == 0 && total.OutputTokens == 0 {
+		return "", model
 	}
 
 	out, err := json.Marshal(map[string]int{
-		"input_tokens":        last.InputTokens,
-		"output_tokens":       last.OutputTokens,
-		"cache_read_tokens":   last.CacheReadInputTokens,
-		"cache_creation_tokens": last.CacheCreationInputTokens,
+		"input_tokens":          total.InputTokens,
+		"output_tokens":         total.OutputTokens,
+		"cache_read_tokens":     total.CacheReadInputTokens,
+		"cache_creation_tokens": total.CacheCreationInputTokens,
 	})
 	if err != nil {
-		return ""
+		return "", model
 	}
-	return string(out)
+	return string(out), model
 }

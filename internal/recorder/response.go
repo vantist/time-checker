@@ -15,7 +15,7 @@ type tokenPayload struct {
 	CacheCreationTokens  int `json:"cache_creation_tokens"`
 }
 
-func RecordResponse(conn *sql.DB, sessionID, tokensJSON string) error {
+func RecordResponse(conn *sql.DB, sessionID, tokensJSON, model string) error {
 	now := time.Now().UTC()
 
 	var tok tokenPayload
@@ -31,13 +31,18 @@ func RecordResponse(conn *sql.DB, sessionID, tokensJSON string) error {
 		}
 	}
 
-	// Look up model for this session to calculate cost
-	var model string
-	conn.QueryRow("SELECT model FROM sessions WHERE id=?", sessionID).Scan(&model)
+	// Backfill model on session if not yet set
+	if model != "" {
+		conn.Exec(`UPDATE sessions SET model=? WHERE id=? AND (model='' OR model IS NULL)`, model, sessionID)
+	}
+
+	// Look up model for this session to calculate cost (may have just been written)
+	var sessionModel string
+	conn.QueryRow("SELECT model FROM sessions WHERE id=?", sessionID).Scan(&sessionModel)
 
 	var cost *float64
 	if tok.InputTokens > 0 || tok.OutputTokens > 0 {
-		cost = pricing.Calculate(model, tok.InputTokens, tok.OutputTokens, tok.CacheReadTokens, tok.CacheCreationTokens)
+		cost = pricing.Calculate(sessionModel, tok.InputTokens, tok.OutputTokens, tok.CacheReadTokens, tok.CacheCreationTokens)
 	}
 
 	// Update the latest turn for this session (highest rowid)
