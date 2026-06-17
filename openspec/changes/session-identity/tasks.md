@@ -7,10 +7,10 @@
 
 ## 2. DB 層 UpsertSession 更新
 
-- [ ] 2.1 在 `internal/db/session.go` 的 `Session` struct 新增欄位：`ProcessPID int64`、`ProcessStart int64`、`ConversationID string`
-- [ ] 2.2 修改 `UpsertSession`：當 `ProcessPID != 0` 且 `ProcessStart != 0` 時，改以 `(process_pid, process_start)` 為 key 執行 upsert（`INSERT OR IGNORE`，然後 UPDATE `conversation_id`、`ended_at`）；否則保持原行為（以 `id` 為 key）
-- [ ] 2.3 撰寫測試：`TestUpsertSession_StableKey`，模擬同一 `(process_pid, process_start)` 但不同 `conversation_id` 的兩次呼叫，確認第二次不建立新 session 而是更新 `conversation_id`
-- [ ] 2.4 撰寫測試：`TestUpsertSession_FallbackToID`，`ProcessPID = 0` 時確認退回原有 id-based upsert 行為
+- [x] 2.1 在 `internal/db/session.go` 的 `Session` struct 新增欄位：`ProcessPID int64`、`ProcessStart int64`、`ConversationID string`
+- [x] 2.2 修改 `UpsertSession`：當 `ProcessPID != 0` 且 `ProcessStart != 0` 時，改以 `(process_pid, process_start)` 為 key 執行 upsert（`INSERT OR IGNORE`，然後 UPDATE `conversation_id`、`ended_at`）；否則保持原行為（以 `id` 為 key）
+- [x] 2.3 撰寫測試：`TestUpsertSession_StableKey`，模擬同一 `(process_pid, process_start)` 但不同 `conversation_id` 的兩次呼叫，確認第二次不建立新 session 而是更新 `conversation_id`
+- [x] 2.4 撰寫測試：`TestUpsertSession_FallbackToID`，`ProcessPID = 0` 時確認退回原有 id-based upsert 行為
 
 ## 3. Recorder 層更新
 
