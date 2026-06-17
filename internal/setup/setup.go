@@ -53,13 +53,13 @@ func SetupClaudeCode() error {
 	if hooks == nil {
 		hooks = map[string]interface{}{}
 	}
-	for event, hook := range ttHooks {
+	for event, hookVal := range ttHooks {
+		newEntries, _ := hookVal.([]interface{})
 		if _, exists := hooks[event]; !exists {
-			hooks[event] = hook
+			hooks[event] = newEntries
 		} else {
-			// append to existing list
 			existing, _ := hooks[event].([]interface{})
-			hooks[event] = append(existing, hook.([]interface{})...)
+			hooks[event] = append(existing, newEntries...)
 		}
 	}
 	settings["hooks"] = hooks
