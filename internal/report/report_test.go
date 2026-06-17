@@ -49,6 +49,22 @@ func insertTurn(t *testing.T, conn *sql.DB, sessionID string, promptAt time.Time
 	}
 }
 
+func insertTurnFull(t *testing.T, conn *sql.DB, sessionID string, promptAt time.Time, responseAt *time.Time,
+	inputTok, outputTok, cacheRead, cacheCreate int64, cost *float64) {
+	t.Helper()
+	var ra interface{}
+	if responseAt != nil {
+		ra = responseAt.UTC().Format(time.RFC3339)
+	}
+	_, err := conn.Exec(
+		`INSERT INTO turns (session_id, prompt_at, response_at, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, estimated_cost_usd) VALUES (?,?,?,?,?,?,?,?)`,
+		sessionID, promptAt.UTC().Format(time.RFC3339), ra, inputTok, outputTok, cacheRead, cacheCreate, cost,
+	)
+	if err != nil {
+		t.Fatalf("insertTurnFull: %v", err)
+	}
+}
+
 func ptr[T any](v T) *T { return &v }
 
 // Task 6.5: no data → "No data for the selected period."
@@ -130,6 +146,69 @@ func TestFormatText(t *testing.T) {
 	}
 	if !strings.Contains(text, "2h 34m") {
 		t.Errorf("agent time format wrong, got: %s", text)
+	}
+}
+
+// Task 2.1: CacheCreationTokens sum
+func TestQueryCacheCreationTokens(t *testing.T) {
+	conn := openTestDB(t)
+	now := time.Now().UTC()
+	insertSession(t, conn, "s1", "/proj", "main", "")
+	insertTurnFull(t, conn, "s1", now.Add(-time.Hour), ptr(now.Add(-time.Hour+time.Minute)), 100, 50, 30, 20, nil)
+	insertTurnFull(t, conn, "s1", now.Add(-30*time.Minute), ptr(now.Add(-30*time.Minute+time.Minute)), 200, 80, 60, 40, nil)
+
+	result, err := report.Query(conn, report.Options{Since: now.Add(-24 * time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if result.CacheCreationTokens != 60 {
+		t.Errorf("CacheCreationTokens = %d, want 60", result.CacheCreationTokens)
+	}
+}
+
+// Task 2.2: ByProject grouping sorted by sessions desc
+func TestQueryByProject(t *testing.T) {
+	conn := openTestDB(t)
+	now := time.Now().UTC()
+	insertSession(t, conn, "s1", "/alpha", "main", "")
+	insertSession(t, conn, "s2", "/alpha", "main", "")
+	insertSession(t, conn, "s3", "/beta", "main", "")
+	insertTurnFull(t, conn, "s1", now.Add(-time.Hour), ptr(now.Add(-time.Hour+time.Minute)), 0, 0, 0, 0, ptr(0.01))
+	insertTurnFull(t, conn, "s2", now.Add(-time.Hour), ptr(now.Add(-time.Hour+time.Minute)), 0, 0, 0, 0, ptr(0.02))
+	insertTurnFull(t, conn, "s3", now.Add(-time.Hour), ptr(now.Add(-time.Hour+time.Minute)), 0, 0, 0, 0, ptr(0.03))
+
+	result, err := report.Query(conn, report.Options{Since: now.Add(-24 * time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(result.ByProject) != 2 {
+		t.Fatalf("ByProject len = %d, want 2", len(result.ByProject))
+	}
+	// first entry must be alpha (2 sessions)
+	if result.ByProject[0].Project != "/alpha" {
+		t.Errorf("ByProject[0].Project = %q, want /alpha", result.ByProject[0].Project)
+	}
+	if result.ByProject[0].SessionsCount != 2 {
+		t.Errorf("ByProject[0].SessionsCount = %d, want 2", result.ByProject[0].SessionsCount)
+	}
+}
+
+// Task 2.3: project with no cost → CostUSD nil
+func TestQueryByProjectNilCost(t *testing.T) {
+	conn := openTestDB(t)
+	now := time.Now().UTC()
+	insertSession(t, conn, "s1", "/nocost", "main", "")
+	insertTurnFull(t, conn, "s1", now.Add(-time.Hour), ptr(now.Add(-time.Hour+time.Minute)), 0, 0, 0, 0, nil)
+
+	result, err := report.Query(conn, report.Options{Since: now.Add(-24 * time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(result.ByProject) != 1 {
+		t.Fatalf("ByProject len = %d, want 1", len(result.ByProject))
+	}
+	if result.ByProject[0].CostUSD != nil {
+		t.Errorf("CostUSD should be nil, got %v", result.ByProject[0].CostUSD)
 	}
 }
 
