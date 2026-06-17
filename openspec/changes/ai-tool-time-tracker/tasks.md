@@ -33,10 +33,10 @@
 
 ## 5. 工作項目標記（`tt work`）
 
-- [ ] 5.1 **[TDD]** 寫 `internal/workitem/workitem_test.go`：測試 `Set("login-redesign")` 寫入檔案；`Get()` 讀取；`Clear()` 刪除；Get 找不到檔案時回傳空字串
-- [ ] 5.2 實作 `internal/workitem/workitem.go`，通過 5.1 測試
-- [ ] 5.3 在 cobra 中加入 `tt work` 子命令（`tt work "<label>"`, `tt work`, `tt work --clear`）
-- [ ] 5.4 在 `RecordPrompt` 中加入讀取 `~/.tt/work-item` 並寫入 `sessions.work_item` 的邏輯（session 尚未設定 work_item 時才寫入）
+- [x] 5.1 **[TDD]** 寫 `internal/workitem/workitem_test.go`：測試 `Set("login-redesign")` 寫入檔案；`Get()` 讀取；`Clear()` 刪除；Get 找不到檔案時回傳空字串
+- [x] 5.2 實作 `internal/workitem/workitem.go`，通過 5.1 測試
+- [x] 5.3 在 cobra 中加入 `tt work` 子命令（`tt work "<label>"`, `tt work`, `tt work --clear`）
+- [x] 5.4 在 `RecordPrompt` 中加入讀取 `~/.tt/work-item` 並寫入 `sessions.work_item` 的邏輯（session 尚未設定 work_item 時才寫入）
 
 ## 6. 時間聚合與報表（`tt report`）
 

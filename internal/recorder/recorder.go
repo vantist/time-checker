@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/user/tt/internal/db"
+	"github.com/user/tt/internal/workitem"
 )
 
 type PromptInput struct {
@@ -21,6 +22,7 @@ func RecordPrompt(conn *sql.DB, input PromptInput) error {
 	now := time.Now().UTC()
 
 	branch := gitBranch(input.Project)
+	wi, _ := workitem.Get()
 
 	if err := db.UpsertSession(conn, db.Session{
 		ID:        input.SessionID,
@@ -28,6 +30,7 @@ func RecordPrompt(conn *sql.DB, input PromptInput) error {
 		Tool:      input.Tool,
 		Model:     input.Model,
 		Branch:    branch,
+		WorkItem:  wi,
 		StartedAt: now,
 	}); err != nil {
 		return fmt.Errorf("upsert session: %w", err)
