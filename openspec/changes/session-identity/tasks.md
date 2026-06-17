@@ -27,12 +27,12 @@
 
 ## 5. Hook 設定更新
 
-- [ ] 5.1 修改 `internal/setup/setup.go`，將 `UserPromptSubmit` hook command 改為：
+- [x] 5.1 修改 `internal/setup/setup.go`，將 `UserPromptSubmit` hook command 改為：
   ```
   PROCESS_PID=$PPID PROCESS_START=$(( $(date +%s) - $(ps -p $PPID -o etimes= | tr -d ' ') )) tt record prompt
   ```
-- [ ] 5.2 手動在 macOS 環境驗證 hook 指令可正確取得 `PROCESS_PID` 與 `PROCESS_START`（非零值）
-- [ ] 5.3 撰寫測試：`TestSetupClaudeCode_HookCommand`，確認 `settings.json` 寫入的 `UserPromptSubmit` hook command 包含 `PROCESS_PID` env var 前綴
+- [x] 5.2 手動在 macOS 環境驗證 hook 指令可正確取得 `PROCESS_PID` 與 `PROCESS_START`（非零值）
+- [x] 5.3 撰寫測試：`TestSetupClaudeCode_HookCommand`，確認 `settings.json` 寫入的 `UserPromptSubmit` hook command 包含 `PROCESS_PID` env var 前綴
 
 ## 6. Session 工作時間計算更新
 

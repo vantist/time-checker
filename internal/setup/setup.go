@@ -11,7 +11,10 @@ var ttHooks = map[string]interface{}{
 	"UserPromptSubmit": []interface{}{
 		map[string]interface{}{
 			"hooks": []interface{}{
-				map[string]interface{}{"type": "command", "command": "tt record prompt"},
+				map[string]interface{}{
+					"type":    "command",
+					"command": `PROCESS_PID=$PPID PROCESS_START=$(( $(date +%s) - $(ps -p $PPID -o etime= | tr -d ' ' | awk -F'[:-]' '{n=NF;s=0;if(n>=1)s+=$n;if(n>=2)s+=$(n-1)*60;if(n>=3)s+=$(n-2)*3600;if(n>=4)s+=$(n-3)*86400;print s}') )) tt record prompt`,
+				},
 			},
 		},
 	},

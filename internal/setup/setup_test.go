@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/user/tt/internal/setup"
@@ -43,6 +44,47 @@ func TestSetupClaudeCodeFresh(t *testing.T) {
 		if _, ok := hooks[event]; !ok {
 			t.Errorf("hooks.%s missing", event)
 		}
+	}
+}
+
+// TestSetupClaudeCode_HookCommand: UserPromptSubmit hook command contains PROCESS_PID env var.
+func TestSetupClaudeCode_HookCommand(t *testing.T) {
+	home := setupHome(t)
+
+	if err := setup.SetupClaudeCode(); err != nil {
+		t.Fatalf("SetupClaudeCode: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(home, ".claude", "settings.json"))
+	if err != nil {
+		t.Fatalf("read settings.json: %v", err)
+	}
+
+	var settings map[string]interface{}
+	if err := json.Unmarshal(data, &settings); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	hooks := settings["hooks"].(map[string]interface{})
+	entries := hooks["UserPromptSubmit"].([]interface{})
+	var cmd string
+	for _, e := range entries {
+		em := e.(map[string]interface{})
+		hs := em["hooks"].([]interface{})
+		for _, h := range hs {
+			hm := h.(map[string]interface{})
+			if c, ok := hm["command"].(string); ok {
+				cmd = c
+				break
+			}
+		}
+	}
+
+	if cmd == "" {
+		t.Fatal("UserPromptSubmit hook command is empty")
+	}
+	if !strings.Contains(cmd, "PROCESS_PID") {
+		t.Errorf("hook command %q does not contain PROCESS_PID", cmd)
 	}
 }
 
