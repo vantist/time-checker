@@ -91,11 +91,11 @@ func TestRecordPrompt_StableSession(t *testing.T) {
 		t.Errorf("expected 1 session, got %d", sessCount)
 	}
 
-	// Expect 2 turns — turns use session_id from PromptInput (conversation-level)
+	// Both turns use the stable session ID ("conv-a" — the id of the first-inserted row).
 	var turnCount int
-	conn.QueryRow("SELECT COUNT(*) FROM turns WHERE session_id IN ('conv-a','conv-b')").Scan(&turnCount)
+	conn.QueryRow("SELECT COUNT(*) FROM turns WHERE session_id='conv-a'").Scan(&turnCount)
 	if turnCount != 2 {
-		t.Errorf("expected 2 turns, got %d", turnCount)
+		t.Errorf("expected 2 turns under stable session ID, got %d", turnCount)
 	}
 }
 

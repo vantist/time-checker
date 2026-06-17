@@ -68,7 +68,8 @@ func resolveStableSessionID(conn *sql.DB, sessionID string) string {
 	if err == nil {
 		return id
 	}
-	// Fallback: sessionID is a conversation UUID stored in conversation_id
-	conn.QueryRow("SELECT id FROM sessions WHERE conversation_id = ?", sessionID).Scan(&id)
-	return id // empty string if not found
+	// Fallback: sessionID is a conversation UUID stored in conversation_id.
+	// Scan error (not-found or DB error) leaves id as "" — caller handles both.
+	_ = conn.QueryRow("SELECT id FROM sessions WHERE conversation_id = ?", sessionID).Scan(&id)
+	return id
 }

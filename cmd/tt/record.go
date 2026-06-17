@@ -119,11 +119,15 @@ func resolvePromptInputFromEnv() (recorder.PromptInput, error) {
 	if v := os.Getenv("PROCESS_START"); v != "" {
 		start, err := strconv.ParseInt(v, 10, 64)
 		if err != nil || start == 0 {
-			fmt.Fprintln(os.Stderr, "tt: PROCESS_START empty or invalid, session key may be unstable")
+			// Only warn when PROCESS_PID was set (user intended stable key but start is bad).
+			if out.ProcessPID != 0 {
+				fmt.Fprintln(os.Stderr, "tt: PROCESS_START empty or invalid, session key may be unstable")
+			}
 		} else {
 			out.ProcessStart = start
 		}
-	} else {
+	} else if out.ProcessPID != 0 {
+		// PROCESS_PID present but PROCESS_START absent → warn once.
 		fmt.Fprintln(os.Stderr, "tt: PROCESS_START empty or invalid, session key may be unstable")
 	}
 
