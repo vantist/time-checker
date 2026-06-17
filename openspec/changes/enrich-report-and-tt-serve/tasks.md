@@ -44,19 +44,19 @@
 
 ## 9. HTML Dashboard（internal/report/html.go）
 
-- [ ] 9.1 建立 `internal/report/html.go`，定義 `const dashboardHTML string`，包含完整 HTML/CSS/JS inline template（使用 Go `text/template` 語法，資料從 `/api/report` JSON fetch）
-- [ ] 9.2 實作 Summary 卡片區塊：顯示 Sessions、Agent time、User active、Input/Output/Cache read/Cache creation tokens、Est. cost
-- [ ] 9.3 實作 Daily timeline 區塊：7 天 bar chart，純 CSS `div` 寬度/高度 `%`，橫軸日期，縱軸 sessions count；無 session 日顯示空 bar（高度 0）
-- [ ] 9.4 實作 By Project table 區塊：欄位 project、sessions、agent time、total tokens、cost
-- [ ] 9.5 實作 Session 明細 table 區塊：欄位時間（local time）、project、branch、model、turns、agent time（分鐘）、cost
-- [ ] 9.6 實作前端 JS：`setInterval` 每 60s fetch `/api/report`，更新 DOM 數值，fetch 失敗只 `console.error` 不拋 exception
-- [ ] 9.7 在 `internal/report/html.go` 實作 `ServeHTTP` handler（或 `HandleDashboard(w, r)` 函式），`GET /` 回傳 `dashboardHTML`（Content-Type text/html）
-- [ ] 9.8 在 `internal/report/html.go` 實作 `HandleAPIReport(db *sql.DB, opts Options) http.HandlerFunc`，呼叫 `Query` + `json.Marshal(result)`，回傳 Content-Type application/json
+- [x] 9.1 建立 `internal/report/html.go`，定義 `const dashboardHTML string`，包含完整 HTML/CSS/JS inline template（使用 Go `text/template` 語法，資料從 `/api/report` JSON fetch）
+- [x] 9.2 實作 Summary 卡片區塊：顯示 Sessions、Agent time、User active、Input/Output/Cache read/Cache creation tokens、Est. cost
+- [x] 9.3 實作 Daily timeline 區塊：7 天 bar chart，純 CSS `div` 寬度/高度 `%`，橫軸日期，縱軸 sessions count；無 session 日顯示空 bar（高度 0）
+- [x] 9.4 實作 By Project table 區塊：欄位 project、sessions、agent time、total tokens、cost
+- [x] 9.5 實作 Session 明細 table 區塊：欄位時間（local time）、project、branch、model、turns、agent time（分鐘）、cost
+- [x] 9.6 實作前端 JS：`setInterval` 每 60s fetch `/api/report`，更新 DOM 數值，fetch 失敗只 `console.error` 不拋 exception
+- [x] 9.7 在 `internal/report/html.go` 實作 `ServeHTTP` handler（或 `HandleDashboard(w, r)` 函式），`GET /` 回傳 `dashboardHTML`（Content-Type text/html）
+- [x] 9.8 在 `internal/report/html.go` 實作 `HandleAPIReport(db *sql.DB, opts Options) http.HandlerFunc`，呼叫 `Query` + `json.Marshal(result)`，回傳 Content-Type application/json
 
 ## 10. 測試：HTML handler（TDD，先寫測試）
 
-- [ ] 10.1 在 `internal/report/html_test.go` 加入測試：`HandleDashboard` 回應 HTTP 200，Content-Type 含 `text/html`，body 含 `<html>`
-- [ ] 10.2 在 `internal/report/html_test.go` 加入測試：`HandleAPIReport` 回應 HTTP 200，Content-Type 含 `application/json`，body 可 JSON unmarshal 且含 `by_project`、`daily` 欄位
+- [x] 10.1 在 `internal/report/html_test.go` 加入測試：`HandleDashboard` 回應 HTTP 200，Content-Type 含 `text/html`，body 含 `<html>`
+- [x] 10.2 在 `internal/report/html_test.go` 加入測試：`HandleAPIReport` 回應 HTTP 200，Content-Type 含 `application/json`，body 可 JSON unmarshal 且含 `by_project`、`daily` 欄位
 
 ## 11. tt serve subcommand（cmd/tt/serve_cmd.go）
 
