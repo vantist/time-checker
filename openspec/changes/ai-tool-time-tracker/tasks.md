@@ -53,10 +53,10 @@
 
 ## 7. 設定管理（`tt config`）
 
-- [ ] 7.1 **[TDD]** 寫 `internal/config/config_test.go`：測試 `Set("idle-threshold", "30")` 寫入；`Get("idle-threshold")` 讀取；未設定時回傳預設值 15
-- [ ] 7.2 實作 `internal/config/config.go`（設定存於 `~/.tt/config.json`），通過 7.1 測試
-- [ ] 7.3 在 cobra 中加入 `tt config set <key> <value>` 子命令
-- [ ] 7.4 在報表聚合時讀取 `idle-threshold` 設定（若未設定使用預設 15 分鐘）
+- [x] 7.1 **[TDD]** 寫 `internal/config/config_test.go`：測試 `Set("idle-threshold", "30")` 寫入；`Get("idle-threshold")` 讀取；未設定時回傳預設值 15
+- [x] 7.2 實作 `internal/config/config.go`（設定存於 `~/.tt/config.json`），通過 7.1 測試
+- [x] 7.3 在 cobra 中加入 `tt config set <key> <value>` 子命令
+- [x] 7.4 在報表聚合時讀取 `idle-threshold` 設定（若未設定使用預設 15 分鐘）
 
 ## 8. Hook 整合設定（`tt setup`）
 

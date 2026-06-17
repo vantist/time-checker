@@ -7,7 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"strconv"
+
 	"github.com/user/tt/internal/aggregator"
+	"github.com/user/tt/internal/config"
 )
 
 type Options struct {
@@ -38,6 +41,11 @@ type GroupResult struct {
 
 func Query(conn *sql.DB, opts Options) (Result, error) {
 	idleThreshold := 15 * time.Minute
+	if v, err := config.Get("idle-threshold"); err == nil && v != "" {
+		if mins, err := strconv.Atoi(v); err == nil {
+			idleThreshold = time.Duration(mins) * time.Minute
+		}
+	}
 
 	projectFilter := ""
 	args := []interface{}{opts.Since.UTC().Format(time.RFC3339)}
