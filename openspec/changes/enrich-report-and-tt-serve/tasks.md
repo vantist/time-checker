@@ -69,8 +69,8 @@
 
 ## 12. 驗收測試
 
-- [ ] 12.1 執行 `go build ./...` 確認無編譯錯誤
-- [ ] 12.2 執行 `go test ./internal/report/...` 確認所有新舊測試通過
-- [ ] 12.3 手動執行 `tt report` 確認 Tokens 區塊與 By Project 區塊出現在輸出中
-- [ ] 12.4 手動執行 `tt report --json | jq .` 確認 `by_project`、`cache_creation_tokens` 欄位存在
+- [x] 12.1 執行 `go build ./...` 確認無編譯錯誤
+- [x] 12.2 執行 `go test ./internal/report/...` 確認所有新舊測試通過
+- [x] 12.3 手動執行 `tt report` 確認 Tokens 區塊與 By Project 區塊出現在輸出中
+- [x] 12.4 手動執行 `tt report --json | jq .` 確認 `by_project`、`cache_creation_tokens` 欄位存在
 - [ ] 12.5 手動執行 `tt serve` 確認終端機印出 `Serving at http://localhost:7890`，瀏覽器自動開啟，dashboard 可見四個區塊
