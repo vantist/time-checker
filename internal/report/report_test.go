@@ -464,3 +464,48 @@ func TestFormatJSONNewFields(t *testing.T) {
 		t.Errorf("by_project should be array of 1, got: %v", m["by_project"])
 	}
 }
+
+// TestSessionDuration_SpanConversations: same (process_pid, process_start), multiple
+// conversation_id values → all turns grouped under one stable session ID → work time
+// spans all turns.
+func TestSessionDuration_SpanConversations(t *testing.T) {
+	conn := openTestDB(t)
+
+	base := time.Date(2026, 6, 18, 9, 0, 0, 0, time.UTC)
+
+	// Create stable session (first conversation)
+	_, err := conn.Exec(`
+		INSERT INTO sessions (id, project, branch, work_item, started_at, process_pid, process_start, conversation_id)
+		VALUES ('stable-sess', '/proj', 'main', '', ?, 55555, 1700000000, 'conv-a')`,
+		base.Format(time.RFC3339),
+	)
+	if err != nil {
+		t.Fatalf("insert session: %v", err)
+	}
+
+	// Turn 1: first conversation, t=0
+	t1p := base
+	t1r := base.Add(30 * time.Second)
+	insertTurn(t, conn, "stable-sess", t1p, &t1r, nil)
+
+	// Turn 2: after /clear (conv-b), 10 minutes later — still same stable session
+	t2p := base.Add(10 * time.Minute)
+	t2r := base.Add(10*time.Minute + 30*time.Second)
+	insertTurn(t, conn, "stable-sess", t2p, &t2r, nil)
+
+	result, err := report.Query(conn, report.Options{Since: base.Add(-time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+
+	if len(result.Sessions) != 1 {
+		t.Fatalf("expected 1 session, got %d", len(result.Sessions))
+	}
+
+	// Both turns span 10m30s; with idle threshold of 15m no gap truncation.
+	// UserActiveTimeSec should be > 600 (10 minutes) and < 700.
+	sess := result.Sessions[0]
+	if sess.UserTimeSec < 600 || sess.UserTimeSec > 700 {
+		t.Errorf("UserTimeSec = %d, want ~630 (10m30s span)", sess.UserTimeSec)
+	}
+}

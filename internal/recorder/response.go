@@ -18,6 +18,12 @@ type tokenPayload struct {
 func RecordResponse(conn *sql.DB, sessionID, tokensJSON, model string) error {
 	now := time.Now().UTC()
 
+	// Resolve to the stable sessions.id (may differ from sessionID when process key is in use).
+	stableID := resolveStableSessionID(conn, sessionID)
+	if stableID == "" {
+		stableID = sessionID // no matching session found; fall back to given ID
+	}
+
 	var tok tokenPayload
 	if tokensJSON != "" {
 		// Try flat format; fall back to nested {"usage": {...}}
@@ -33,12 +39,12 @@ func RecordResponse(conn *sql.DB, sessionID, tokensJSON, model string) error {
 
 	// Backfill model on session if not yet set
 	if model != "" {
-		conn.Exec(`UPDATE sessions SET model=? WHERE id=? AND (model='' OR model IS NULL)`, model, sessionID)
+		conn.Exec(`UPDATE sessions SET model=? WHERE id=? AND (model='' OR model IS NULL)`, model, stableID)
 	}
 
 	// Look up model for this session to calculate cost (may have just been written)
 	var sessionModel string
-	conn.QueryRow("SELECT model FROM sessions WHERE id=?", sessionID).Scan(&sessionModel)
+	conn.QueryRow("SELECT model FROM sessions WHERE id=?", stableID).Scan(&sessionModel)
 
 	var cost *float64
 	if tok.InputTokens > 0 || tok.OutputTokens > 0 {
@@ -63,7 +69,7 @@ func RecordResponse(conn *sql.DB, sessionID, tokensJSON, model string) error {
 		tok.CacheReadTokens,
 		tok.CacheCreationTokens,
 		cost,
-		sessionID,
+		stableID,
 	)
 	return err
 }

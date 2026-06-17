@@ -20,12 +20,12 @@ type Session struct {
 	ConversationID string
 }
 
-// UpsertSession inserts or updates a session.
+// UpsertSession inserts or updates a session and returns the stable session ID.
 // When ProcessPID and ProcessStart are both non-zero, (process_pid, process_start)
-// is used as the stable key: the session is created once and conversation_id is
-// updated on subsequent calls. Otherwise the original id-based INSERT OR IGNORE
-// behaviour is preserved.
-func UpsertSession(db *sql.DB, s Session) error {
+// is the stable key: the session is created once and conversation_id is updated
+// on subsequent calls. The returned ID is the sessions.id of the stable row.
+// Otherwise the original id-based INSERT OR IGNORE is used and s.ID is returned.
+func UpsertSession(db *sql.DB, s Session) (string, error) {
 	if s.ProcessPID != 0 && s.ProcessStart != 0 {
 		return upsertByProcessKey(db, s)
 	}
@@ -35,11 +35,10 @@ func UpsertSession(db *sql.DB, s Session) error {
 		s.ID, s.Project, s.Tool, s.Model, s.Branch, s.WorkItem,
 		s.StartedAt.UTC().Format(time.RFC3339),
 	)
-	return err
+	return s.ID, err
 }
 
-func upsertByProcessKey(db *sql.DB, s Session) error {
-	// Check if a session with this process key already exists.
+func upsertByProcessKey(db *sql.DB, s Session) (string, error) {
 	var existingID string
 	err := db.QueryRow(
 		"SELECT id FROM sessions WHERE process_pid = ? AND process_start = ?",
@@ -47,11 +46,10 @@ func upsertByProcessKey(db *sql.DB, s Session) error {
 	).Scan(&existingID)
 
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
+		return "", err
 	}
 
 	if errors.Is(err, sql.ErrNoRows) {
-		// First time: insert new session.
 		_, err = db.Exec(`
 			INSERT INTO sessions
 				(id, project, tool, model, branch, work_item, started_at, process_pid, process_start, conversation_id)
@@ -60,7 +58,7 @@ func upsertByProcessKey(db *sql.DB, s Session) error {
 			s.StartedAt.UTC().Format(time.RFC3339),
 			s.ProcessPID, s.ProcessStart, s.ConversationID,
 		)
-		return err
+		return s.ID, err
 	}
 
 	// Existing session: update conversation_id (and ended_at if set).
@@ -73,5 +71,5 @@ func upsertByProcessKey(db *sql.DB, s Session) error {
 		WHERE process_pid = ? AND process_start = ?`,
 		s.ConversationID, endedAt, s.ProcessPID, s.ProcessStart,
 	)
-	return err
+	return existingID, err
 }

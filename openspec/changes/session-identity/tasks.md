@@ -36,9 +36,9 @@
 
 ## 6. Session 工作時間計算更新
 
-- [ ] 6.1 確認現有 `report` 或 `dashboard` 查詢 session 工作時間的 SQL（在 `internal/db/` 或 `internal/report/` 中搜尋），確認是否以 `session_id` 為 group key
-- [ ] 6.2 若工作時間以 `session.id` 計算（舊行為），更新查詢改以 `(process_pid, process_start)` 分組（有值時）或 fallback 到 `session.id`（NULL 的舊資料）
-- [ ] 6.3 撰寫測試：`TestSessionDuration_SpanConversations`，確認同一工作 session（相同 process key）的多段 turns 計算出正確的累計工作時間
+- [x] 6.1 確認現有 `report` 或 `dashboard` 查詢 session 工作時間的 SQL（在 `internal/db/` 或 `internal/report/` 中搜尋），確認是否以 `session_id` 為 group key
+- [x] 6.2 若工作時間以 `session.id` 計算（舊行為），更新查詢改以 `(process_pid, process_start)` 分組（有值時）或 fallback 到 `session.id`（NULL 的舊資料）
+- [x] 6.3 撰寫測試：`TestSessionDuration_SpanConversations`，確認同一工作 session（相同 process key）的多段 turns 計算出正確的累計工作時間
 
 ## 7. 整合驗證
 

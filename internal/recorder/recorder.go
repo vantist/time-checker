@@ -26,7 +26,7 @@ func RecordPrompt(conn *sql.DB, input PromptInput) error {
 	branch := gitBranch(input.Project)
 	wi, _ := workitem.Get()
 
-	if err := db.UpsertSession(conn, db.Session{
+	stableID, err := db.UpsertSession(conn, db.Session{
 		ID:             input.SessionID,
 		Project:        input.Project,
 		Tool:           input.Tool,
@@ -37,13 +37,15 @@ func RecordPrompt(conn *sql.DB, input PromptInput) error {
 		ProcessPID:     input.ProcessPID,
 		ProcessStart:   input.ProcessStart,
 		ConversationID: input.SessionID,
-	}); err != nil {
+	})
+	if err != nil {
 		return fmt.Errorf("upsert session: %w", err)
 	}
 
-	_, err := conn.Exec(
+	// Use stable session ID for turns so JOIN sessions s ON s.id = t.session_id works.
+	_, err = conn.Exec(
 		`INSERT INTO turns (session_id, prompt_at) VALUES (?, ?)`,
-		input.SessionID, now.Format(time.RFC3339),
+		stableID, now.Format(time.RFC3339),
 	)
 	return err
 }
@@ -55,4 +57,18 @@ func gitBranch(dir string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// resolveStableSessionID finds the sessions.id for a given sessionID which may
+// be either a stable session ID or a conversation UUID stored in conversation_id.
+func resolveStableSessionID(conn *sql.DB, sessionID string) string {
+	// Fast path: direct match on sessions.id
+	var id string
+	err := conn.QueryRow("SELECT id FROM sessions WHERE id = ?", sessionID).Scan(&id)
+	if err == nil {
+		return id
+	}
+	// Fallback: sessionID is a conversation UUID stored in conversation_id
+	conn.QueryRow("SELECT id FROM sessions WHERE conversation_id = ?", sessionID).Scan(&id)
+	return id // empty string if not found
 }

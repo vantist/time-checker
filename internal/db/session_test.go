@@ -30,14 +30,14 @@ func TestUpsertSession_StableKey(t *testing.T) {
 		StartedAt:    time.Now().UTC(),
 	}
 
-	if err := db.UpsertSession(conn, base); err != nil {
+	if _, err := db.UpsertSession(conn, base); err != nil {
 		t.Fatalf("first upsert: %v", err)
 	}
 
 	// Second call: same process key, new conversation UUID
 	base.ConversationID = "conv-b"
 	base.ID = "conv-b"
-	if err := db.UpsertSession(conn, base); err != nil {
+	if _, err := db.UpsertSession(conn, base); err != nil {
 		t.Fatalf("second upsert: %v", err)
 	}
 
@@ -73,10 +73,10 @@ func TestUpsertSession_FallbackToID(t *testing.T) {
 		// ProcessPID = 0 (zero value) → fallback
 	}
 
-	if err := db.UpsertSession(conn, s); err != nil {
+	if _, err := db.UpsertSession(conn, s); err != nil {
 		t.Fatalf("first upsert: %v", err)
 	}
-	if err := db.UpsertSession(conn, s); err != nil {
+	if _, err := db.UpsertSession(conn, s); err != nil {
 		t.Fatalf("second upsert: %v", err)
 	}
 
@@ -105,13 +105,13 @@ func TestUpsertSessionPreservesStartedAt(t *testing.T) {
 		StartedAt: original,
 	}
 
-	if err := db.UpsertSession(conn, s); err != nil {
+	if _, err := db.UpsertSession(conn, s); err != nil {
 		t.Fatalf("first upsert: %v", err)
 	}
 
 	// Second upsert with later time — started_at must stay original
 	s.StartedAt = original.Add(time.Hour)
-	if err := db.UpsertSession(conn, s); err != nil {
+	if _, err := db.UpsertSession(conn, s); err != nil {
 		t.Fatalf("second upsert: %v", err)
 	}
 
