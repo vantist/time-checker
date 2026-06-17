@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/user/tt/internal/db"
@@ -102,6 +103,33 @@ func readStdinJSON() (*hookPayload, error) {
 	return &p, nil
 }
 
+// resolvePromptInputFromEnv reads PROCESS_PID and PROCESS_START env vars.
+// If PROCESS_START is missing or invalid, ProcessStart is set to 0 (triggers
+// UpsertSession degraded mode) and a warning is printed to stderr.
+func resolvePromptInputFromEnv() (recorder.PromptInput, error) {
+	var out recorder.PromptInput
+
+	if v := os.Getenv("PROCESS_PID"); v != "" {
+		pid, err := strconv.ParseInt(v, 10, 64)
+		if err == nil {
+			out.ProcessPID = pid
+		}
+	}
+
+	if v := os.Getenv("PROCESS_START"); v != "" {
+		start, err := strconv.ParseInt(v, 10, 64)
+		if err != nil || start == 0 {
+			fmt.Fprintln(os.Stderr, "tt: PROCESS_START empty or invalid, session key may be unstable")
+		} else {
+			out.ProcessStart = start
+		}
+	} else {
+		fmt.Fprintln(os.Stderr, "tt: PROCESS_START empty or invalid, session key may be unstable")
+	}
+
+	return out, nil
+}
+
 func resolvePromptInput(cmd *cobra.Command) (recorder.PromptInput, error) {
 	stdin, _ := readStdinJSON()
 
@@ -122,11 +150,15 @@ func resolvePromptInput(cmd *cobra.Command) (recorder.PromptInput, error) {
 		}
 	}
 
+	envInput, _ := resolvePromptInputFromEnv()
+
 	return recorder.PromptInput{
-		SessionID: sessionID,
-		Project:   project,
-		Tool:      tool,
-		Model:     model,
+		SessionID:    sessionID,
+		Project:      project,
+		Tool:         tool,
+		Model:        model,
+		ProcessPID:   envInput.ProcessPID,
+		ProcessStart: envInput.ProcessStart,
 	}, nil
 }
 

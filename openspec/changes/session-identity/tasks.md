@@ -20,10 +20,10 @@
 
 ## 4. CLI `tt record prompt` 讀取 env var
 
-- [ ] 4.1 在 `cmd/tt/record.go` 的 `resolvePromptInput()` 中，讀取 `os.Getenv("PROCESS_PID")` 與 `os.Getenv("PROCESS_START")` 並轉為 `int64`
-- [ ] 4.2 將讀取到的值填入 `recorder.PromptInput.ProcessPID` 與 `recorder.PromptInput.ProcessStart`
-- [ ] 4.3 若 `PROCESS_START` 解析失敗或為 0，在 `stderr` 輸出警告 `tt: PROCESS_START empty or invalid, session key may be unstable`，並將 `ProcessStart` 設 0（讓 UpsertSession 降級）
-- [ ] 4.4 撰寫測試：`TestResolvePromptInput_EnvVars`，設定 env var 後確認 `PromptInput` 的 `ProcessPID`/`ProcessStart` 正確填入
+- [x] 4.1 在 `cmd/tt/record.go` 的 `resolvePromptInput()` 中，讀取 `os.Getenv("PROCESS_PID")` 與 `os.Getenv("PROCESS_START")` 並轉為 `int64`
+- [x] 4.2 將讀取到的值填入 `recorder.PromptInput.ProcessPID` 與 `recorder.PromptInput.ProcessStart`
+- [x] 4.3 若 `PROCESS_START` 解析失敗或為 0，在 `stderr` 輸出警告 `tt: PROCESS_START empty or invalid, session key may be unstable`，並將 `ProcessStart` 設 0（讓 UpsertSession 降級）
+- [x] 4.4 撰寫測試：`TestResolvePromptInput_EnvVars`，設定 env var 後確認 `PromptInput` 的 `ProcessPID`/`ProcessStart` 正確填入
 
 ## 5. Hook 設定更新
 
