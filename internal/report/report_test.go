@@ -292,6 +292,33 @@ func TestFormatJSON(t *testing.T) {
 	}
 }
 
+// Task 8.1: Daily breakdown sorted by date, days without sessions not in array
+func TestQueryDailyBreakdown(t *testing.T) {
+	conn := openTestDB(t)
+	// Use fixed dates for reproducibility
+	day1 := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+	day2 := time.Date(2026, 6, 17, 10, 0, 0, 0, time.UTC) // skip 6-16
+	insertSession(t, conn, "s1", "/proj", "main", "")
+	insertTurnFull(t, conn, "s1", day1, ptr(day1.Add(time.Minute)), 100, 50, 0, 0, nil)
+	insertTurnFull(t, conn, "s1", day2, ptr(day2.Add(time.Minute)), 200, 80, 0, 0, nil)
+
+	since := time.Date(2026, 6, 14, 0, 0, 0, 0, time.UTC)
+	result, err := report.Query(conn, report.Options{Since: since})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	// only 2 days with data
+	if len(result.Daily) != 2 {
+		t.Errorf("Daily len = %d, want 2 (gap day 6-16 must not appear)", len(result.Daily))
+	}
+	if result.Daily[0].Date != "2026-06-15" {
+		t.Errorf("Daily[0].Date = %q, want 2026-06-15", result.Daily[0].Date)
+	}
+	if result.Daily[1].Date != "2026-06-17" {
+		t.Errorf("Daily[1].Date = %q, want 2026-06-17", result.Daily[1].Date)
+	}
+}
+
 // Task 6.1: FormatJSON includes cache_creation_tokens, cache_read_tokens, by_project
 func TestFormatJSONNewFields(t *testing.T) {
 	costVal := 0.05

@@ -35,12 +35,12 @@
 
 ## 7. Daily breakdown 後處理
 
-- [ ] 7.1 定義 `DailyStat struct { Date string; Sessions int; InputTokens int64; OutputTokens int64 }` 於 `internal/report/report.go`，加入 `Result.Daily []DailyStat`
-- [ ] 7.2 在 rows 後處理邏輯按 `DATE(prompt_at)` 分組累積 DailyStat（取 `prompt_at` 的 UTC 日期字串 `YYYY-MM-DD`），保留最近 7 天（由 `opts.Since` 決定起始，後處理過濾）
+- [x] 7.1 定義 `DailyStat struct { Date string; Sessions int; InputTokens int64; OutputTokens int64 }` 於 `internal/report/report.go`，加入 `Result.Daily []DailyStat`
+- [x] 7.2 在 rows 後處理邏輯按 `DATE(prompt_at)` 分組累積 DailyStat（取 `prompt_at` 的 UTC 日期字串 `YYYY-MM-DD`），保留最近 7 天（由 `opts.Since` 決定起始，後處理過濾）
 
 ## 8. 測試：Daily breakdown（TDD，先寫測試）
 
-- [ ] 8.1 在 `internal/report/report_test.go` 加入測試：Result.Daily 按日期排序，某日無 session 時該日不出現在陣列中（前端補零）
+- [x] 8.1 在 `internal/report/report_test.go` 加入測試：Result.Daily 按日期排序，某日無 session 時該日不出現在陣列中（前端補零）
 
 ## 9. HTML Dashboard（internal/report/html.go）
 
