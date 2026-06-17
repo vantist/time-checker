@@ -60,10 +60,10 @@
 
 ## 8. Hook 整合設定（`tt setup`）
 
-- [ ] 8.1 **[TDD]** 寫 `internal/setup/setup_test.go`：測試 `SetupClaudeCode` — 首次設定正確寫入 hooks；已有其他 hooks 時不覆蓋
-- [ ] 8.2 實作 `internal/setup/setup.go`：`SetupClaudeCode()` merge hooks 到 `~/.claude/settings.json`，通過 8.1 測試
-- [ ] 8.3 在 cobra 中加入 `tt setup --claude-code` 子命令
-- [ ] 8.4 實作 `tt setup --copilot` — 輸出 Copilot CLI 設定指引（含事件名稱、hook 路徑、命令範例）
+- [x] 8.1 **[TDD]** 寫 `internal/setup/setup_test.go`：測試 `SetupClaudeCode` — 首次設定正確寫入 hooks；已有其他 hooks 時不覆蓋
+- [x] 8.2 實作 `internal/setup/setup.go`：`SetupClaudeCode()` merge hooks 到 `~/.claude/settings.json`，通過 8.1 測試
+- [x] 8.3 在 cobra 中加入 `tt setup --claude-code` 子命令
+- [x] 8.4 實作 `tt setup --copilot` — 輸出 Copilot CLI 設定指引（含事件名稱、hook 路徑、命令範例）
 
 ## 9. End-to-End 驗證
 
