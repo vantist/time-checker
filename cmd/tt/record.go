@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 	"github.com/user/tt/internal/db"
@@ -73,9 +74,10 @@ var recordResponseCmd = &cobra.Command{
 // hookPayload covers both Claude Code and Copilot CLI stdin formats.
 type hookPayload struct {
 	// Claude Code fields
-	SessionID string `json:"session_id"`
-	Cwd       string `json:"cwd"`
-	Model     string `json:"model"`
+	SessionID      string `json:"session_id"`
+	Cwd            string `json:"cwd"`
+	Model          string `json:"model"`
+	TranscriptPath string `json:"transcript_path"`
 	// Copilot CLI fields
 	CopilotSessionID string `json:"sessionId"`
 }
@@ -138,6 +140,67 @@ func resolveResponseInput(cmd *cobra.Command) (sessionID, tokensJSON string, err
 		if sessionID == "" {
 			sessionID = stdin.SessionID
 		}
+		if tokensJSON == "" && stdin.TranscriptPath != "" {
+			tokensJSON = extractTokensFromTranscript(stdin.TranscriptPath)
+		}
 	}
 	return sessionID, tokensJSON, nil
+}
+
+// extractTokensFromTranscript reads the transcript JSONL and returns the usage
+// from the last assistant message as a flat JSON string.
+func extractTokensFromTranscript(path string) string {
+	// expand ~ if present
+	if len(path) >= 2 && path[:2] == "~/" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			path = filepath.Join(home, path[2:])
+		}
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	type usageFields struct {
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+	}
+	type transcriptEntry struct {
+		Type    string `json:"type"`
+		Message struct {
+			Usage usageFields `json:"usage"`
+		} `json:"message"`
+	}
+
+	var last *usageFields
+	dec := json.NewDecoder(f)
+	for dec.More() {
+		var entry transcriptEntry
+		if err := dec.Decode(&entry); err != nil {
+			continue
+		}
+		if entry.Type == "assistant" {
+			u := entry.Message.Usage
+			last = &u
+		}
+	}
+	if last == nil {
+		return ""
+	}
+
+	out, err := json.Marshal(map[string]int{
+		"input_tokens":        last.InputTokens,
+		"output_tokens":       last.OutputTokens,
+		"cache_read_tokens":   last.CacheReadInputTokens,
+		"cache_creation_tokens": last.CacheCreationInputTokens,
+	})
+	if err != nil {
+		return ""
+	}
+	return string(out)
 }

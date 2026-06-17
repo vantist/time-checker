@@ -1,0 +1,100 @@
+# Architecture
+
+## Overview
+
+`tt` 是一個 Go CLI 工具，自動追蹤 AI 開發工作流的時間與費用。透過 Claude Code 和 Copilot CLI 的 hook 系統，靜默記錄每次 prompt/response 事件至本地 SQLite，並提供依專案、時間範圍、工作項目的報表查詢。無外部 runtime 依賴，單一二進位。
+
+## 模組結構
+
+```
+cmd/tt/          CLI 進入點（Cobra）
+  main.go        根指令設定
+  record.go      record prompt / record response（hook 接收）
+  work.go        tt work（工作項目標記）
+  report_cmd.go  tt report（查詢報表）
+  config_cmd.go  tt config set（設定管理）
+  setup_cmd.go   tt setup（hook 安裝）
+
+internal/
+  db/            SQLite schema、連線、session upsert
+  recorder/      RecordPrompt / RecordResponse（寫入 DB）
+  report/        Query + FormatText/JSON（讀取 DB）
+  aggregator/    AgentTime / UserActiveTime（時間計算）
+  pricing/       per-model 定價表 + 費用估算
+  config/        ~/.tt/config.json 讀寫
+  workitem/      ~/.tt/work-item 讀寫
+  setup/         settings.json hook 合併（Claude Code）
+```
+
+## 資料流
+
+### 記錄流程
+
+```
+Claude Code UserPromptSubmit hook
+  → stdin JSON {session_id, cwd, model}
+  → tt record prompt
+  → recorder.RecordPrompt()
+      ├─ git branch 自動偵測
+      ├─ workitem.Get() → ~/.tt/work-item
+      ├─ db.UpsertSession()  → sessions 表
+      └─ INSERT turns (prompt_at)
+
+Claude Code Stop hook
+  → stdin JSON {session_id} + token 欄位
+  → tt record response
+  → recorder.RecordResponse()
+      ├─ 解析 token JSON
+      ├─ pricing.Calculate(model, tokens)
+      └─ UPDATE turns (response_at, tokens, cost)
+```
+
+### 報表流程
+
+```
+tt report [--since 7d] [--project X] [--by-work-item]
+  → report.Query()
+      ├─ JOIN turns + sessions
+      ├─ aggregator.AgentTime()     = Σ(response_at - prompt_at)
+      └─ aggregator.UserActiveTime() = Σ(inter-prompt gaps < idle_threshold)
+  → FormatText() 或 FormatJSON()
+```
+
+## 資料庫 Schema（SQLite，`~/.tt/data.db`）
+
+```sql
+sessions (id PK, project, tool, model, branch, work_item, started_at, ended_at)
+turns    (id PK, session_id FK, prompt_at, response_at,
+          input_tokens, output_tokens, cache_read_tokens,
+          cache_creation_tokens, estimated_cost_usd)
+```
+
+- 一個 session = 一次 Claude Code/Copilot CLI 啟動
+- 一個 turn = 一次 prompt-response 循環
+- `TT_DB_PATH` env var 可覆寫 DB 路徑（測試用）
+
+## 工作項目優先順序
+
+`work_item` > `branch` > `"untagged"`（報表分組依此順序 fallback）
+
+## Hook 整合
+
+| Hook 事件 | 指令 | 用途 |
+|-----------|------|------|
+| `UserPromptSubmit` | `tt record prompt` | 記錄 prompt |
+| `Stop` | `tt record response` | 記錄 token 與費用 |
+| Copilot `userPromptSubmitted` | `tt record prompt --tool copilot-cli` | 同上 |
+| Copilot `agentStop` | `tt record response --tool copilot-cli` | token 為 NULL（不支援） |
+
+Hook 失敗靜默處理（exit 0，錯誤寫 stderr），不阻擋 AI 工具正常運作。
+
+## 關鍵設計決策
+
+- **Go 單一二進位**：冷啟動 <10ms，無 runtime 依賴
+- **modernc.org/sqlite**：純 Go SQLite，無 cgo，跨平台 build
+- **定價表硬編碼**：不開放設定，跟隨 binary 版本更新
+- **idle threshold**：預設 15 分鐘，`tt config set idle-threshold <minutes>` 可調整
+- **stdin 優先於 flag**：hook 傳入 stdin JSON，flag 保留供手動/測試用
+
+---
+Related: [Commands](docs/commands.md)
