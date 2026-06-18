@@ -8,10 +8,10 @@
 
 ## 2. 建立 internal/reconcile package（鎖機制）
 
-- [ ] 2.1 建立 `internal/reconcile/lock.go`：定義 `lockPath()` 回傳 `~/.tt/reconcile.lock`
-- [ ] 2.2 建立 `internal/reconcile/lock_unix.go`（build tag `//go:build !windows`）：實作 `tryLock(path string) (unlock func(), ok bool)`，用 `golang.org/x/sys/unix.Flock` 配合 `LOCK_EX|LOCK_NB`
-- [ ] 2.3 建立 `internal/reconcile/lock_windows.go`（build tag `//go:build windows`）：實作 `tryLock` 用 `golang.org/x/sys/windows.LockFileEx`
-- [ ] 2.4 寫 `internal/reconcile/lock_test.go`：測試同一 process 兩次 tryLock 時第二次 ok=false（TDD：先寫 failing test）
+- [x] 2.1 建立 `internal/reconcile/lock.go`：定義 `lockPath()` 回傳 `~/.tt/reconcile.lock`
+- [x] 2.2 建立 `internal/reconcile/lock_unix.go`（build tag `//go:build !windows`）：實作 `tryLock(path string) (unlock func(), ok bool)`，用 `golang.org/x/sys/unix.Flock` 配合 `LOCK_EX|LOCK_NB`
+- [x] 2.3 建立 `internal/reconcile/lock_windows.go`（build tag `//go:build windows`）：實作 `tryLock` 用 `golang.org/x/sys/windows.LockFileEx`
+- [x] 2.4 寫 `internal/reconcile/lock_test.go`：測試同一 process 兩次 tryLock 時第二次 ok=false（TDD：先寫 failing test）
 
 ## 3. 實作 reconcile 核心邏輯
 
