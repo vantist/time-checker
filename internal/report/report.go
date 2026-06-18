@@ -323,14 +323,13 @@ type rowData struct {
 func groupByWorkItem(rows []rowData, sessTurns map[string][]aggregator.Turn, idleThreshold time.Duration) []GroupResult {
 	type groupState struct {
 		project  string
+		label    string
 		sessions map[string]struct{}
 		turns    []aggregator.Turn
 		cost     *float64
 	}
 	groups := map[string]*groupState{}
 	keyOf := map[string]string{} // sessionID → composite key "project|label"
-	projectOf := map[string]string{} // sessionID → project
-	displayOf := map[string]string{} // sessionID → display label (no project)
 
 	for _, r := range rows {
 		if _, seen := keyOf[r.sessionID]; !seen {
@@ -341,16 +340,14 @@ func groupByWorkItem(rows []rowData, sessTurns map[string][]aggregator.Turn, idl
 			if label == "" {
 				label = "untagged"
 			}
-			displayOf[r.sessionID] = label
-			projectOf[r.sessionID] = r.project
 			keyOf[r.sessionID] = r.project + "|" + label
+			key := keyOf[r.sessionID]
+			if groups[key] == nil {
+				groups[key] = &groupState{project: r.project, label: label, sessions: map[string]struct{}{}}
+			}
 		}
 		key := keyOf[r.sessionID]
 		g := groups[key]
-		if g == nil {
-			g = &groupState{project: r.project, sessions: map[string]struct{}{}}
-			groups[key] = g
-		}
 		g.sessions[r.sessionID] = struct{}{}
 		if r.cost != nil {
 			if g.cost == nil {
@@ -369,19 +366,11 @@ func groupByWorkItem(rows []rowData, sessTurns map[string][]aggregator.Turn, idl
 	}
 
 	var result []GroupResult
-	for key, g := range groups {
-		// derive display label from one of the sessions in this group
-		var displayLabel string
-		for sessID, k := range keyOf {
-			if k == key {
-				displayLabel = displayOf[sessID]
-				break
-			}
-		}
+	for _, g := range groups {
 		agentSec := int64(aggregator.AgentTime(g.turns).Seconds())
 		userSec := int64(aggregator.UserActiveTime(g.turns, time.Time{}, idleThreshold).Seconds())
 		result = append(result, GroupResult{
-			Label:             displayLabel,
+			Label:             g.label,
 			Project:           path.Base(g.project),
 			SessionsCount:     len(g.sessions),
 			AgentTimeSec:      agentSec,
