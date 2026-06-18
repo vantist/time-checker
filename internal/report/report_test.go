@@ -509,3 +509,81 @@ func TestSessionDuration_SpanConversations(t *testing.T) {
 		t.Errorf("UserTimeSec = %d, want ~630 (10m30s span)", sess.UserTimeSec)
 	}
 }
+
+// 1.1: 相同 branch 不同 project 應產生兩個不同 GroupResult（複合 key 邏輯）
+func TestGroupByWorkItem_SameBranchDifferentProject(t *testing.T) {
+	conn := openTestDB(t)
+	now := time.Now().UTC()
+
+	insertSession(t, conn, "gp-a", "/repo/alpha", "main", "")
+	insertSession(t, conn, "gp-b", "/repo/beta", "main", "")
+
+	ra := now.Add(time.Minute)
+	insertTurn(t, conn, "gp-a", now.Add(-time.Hour), &ra, nil)
+	insertTurn(t, conn, "gp-b", now.Add(-time.Hour), &ra, nil)
+
+	result, err := report.Query(conn, report.Options{Since: now.Add(-2 * time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(result.Groups) != 2 {
+		t.Errorf("Groups len = %d, want 2 (different projects must not merge)", len(result.Groups))
+	}
+}
+
+// 1.2: GroupResult.Project == path.Base(project)，GroupResult.Label 不含 project 路徑
+func TestGroupByWorkItem_ProjectField(t *testing.T) {
+	conn := openTestDB(t)
+	now := time.Now().UTC()
+
+	insertSession(t, conn, "gp-c", "/repo/myproject", "main", "")
+
+	ra := now.Add(time.Minute)
+	insertTurn(t, conn, "gp-c", now.Add(-time.Hour), &ra, nil)
+
+	result, err := report.Query(conn, report.Options{Since: now.Add(-2 * time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(result.Groups) != 1 {
+		t.Fatalf("Groups len = %d, want 1", len(result.Groups))
+	}
+	g := result.Groups[0]
+	if g.Project != "myproject" {
+		t.Errorf("GroupResult.Project = %q, want %q", g.Project, "myproject")
+	}
+	if g.Label != "main" {
+		t.Errorf("GroupResult.Label = %q, want %q", g.Label, "main")
+	}
+}
+
+// 1.3: 相同 work_item 不同 project 應產生兩列，Project 欄各自對應正確值
+func TestGroupByWorkItem_SameWorkItemDifferentProject(t *testing.T) {
+	conn := openTestDB(t)
+	now := time.Now().UTC()
+
+	insertSession(t, conn, "gp-d", "/repo/alpha", "main", "feature-x")
+	insertSession(t, conn, "gp-e", "/repo/beta", "main", "feature-x")
+
+	ra := now.Add(time.Minute)
+	insertTurn(t, conn, "gp-d", now.Add(-time.Hour), &ra, nil)
+	insertTurn(t, conn, "gp-e", now.Add(-time.Hour), &ra, nil)
+
+	result, err := report.Query(conn, report.Options{Since: now.Add(-2 * time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(result.Groups) != 2 {
+		t.Fatalf("Groups len = %d, want 2", len(result.Groups))
+	}
+	projects := map[string]bool{}
+	for _, g := range result.Groups {
+		if g.Label != "feature-x" {
+			t.Errorf("GroupResult.Label = %q, want feature-x", g.Label)
+		}
+		projects[g.Project] = true
+	}
+	if !projects["alpha"] || !projects["beta"] {
+		t.Errorf("expected both alpha and beta in Projects, got: %v", projects)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -65,6 +66,7 @@ type DailyStat struct {
 
 type GroupResult struct {
 	Label             string   `json:"label"`
+	Project           string   `json:"project"`
 	SessionsCount     int      `json:"sessions_count"`
 	AgentTimeSec      int64    `json:"agent_time_sec"`
 	UserActiveTimeSec int64    `json:"user_active_time_sec"`
@@ -320,15 +322,18 @@ type rowData struct {
 
 func groupByWorkItem(rows []rowData, sessTurns map[string][]aggregator.Turn, idleThreshold time.Duration) []GroupResult {
 	type groupState struct {
+		project  string
 		sessions map[string]struct{}
 		turns    []aggregator.Turn
 		cost     *float64
 	}
 	groups := map[string]*groupState{}
-	labelOf := map[string]string{} // sessionID → label
+	keyOf := map[string]string{} // sessionID → composite key "project|label"
+	projectOf := map[string]string{} // sessionID → project
+	displayOf := map[string]string{} // sessionID → display label (no project)
 
 	for _, r := range rows {
-		if _, seen := labelOf[r.sessionID]; !seen {
+		if _, seen := keyOf[r.sessionID]; !seen {
 			label := r.workItem
 			if label == "" {
 				label = r.branch
@@ -336,13 +341,15 @@ func groupByWorkItem(rows []rowData, sessTurns map[string][]aggregator.Turn, idl
 			if label == "" {
 				label = "untagged"
 			}
-			labelOf[r.sessionID] = label
+			displayOf[r.sessionID] = label
+			projectOf[r.sessionID] = r.project
+			keyOf[r.sessionID] = r.project + "|" + label
 		}
-		label := labelOf[r.sessionID]
-		g := groups[label]
+		key := keyOf[r.sessionID]
+		g := groups[key]
 		if g == nil {
-			g = &groupState{sessions: map[string]struct{}{}}
-			groups[label] = g
+			g = &groupState{project: r.project, sessions: map[string]struct{}{}}
+			groups[key] = g
 		}
 		g.sessions[r.sessionID] = struct{}{}
 		if r.cost != nil {
@@ -355,18 +362,27 @@ func groupByWorkItem(rows []rowData, sessTurns map[string][]aggregator.Turn, idl
 	}
 
 	for sessID, turns := range sessTurns {
-		label := labelOf[sessID]
-		if g, ok := groups[label]; ok {
+		key := keyOf[sessID]
+		if g, ok := groups[key]; ok {
 			g.turns = append(g.turns, turns...)
 		}
 	}
 
 	var result []GroupResult
-	for label, g := range groups {
+	for key, g := range groups {
+		// derive display label from one of the sessions in this group
+		var displayLabel string
+		for sessID, k := range keyOf {
+			if k == key {
+				displayLabel = displayOf[sessID]
+				break
+			}
+		}
 		agentSec := int64(aggregator.AgentTime(g.turns).Seconds())
 		userSec := int64(aggregator.UserActiveTime(g.turns, time.Time{}, idleThreshold).Seconds())
 		result = append(result, GroupResult{
-			Label:             label,
+			Label:             displayLabel,
+			Project:           path.Base(g.project),
 			SessionsCount:     len(g.sessions),
 			AgentTimeSec:      agentSec,
 			UserActiveTimeSec: userSec,
