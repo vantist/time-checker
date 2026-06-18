@@ -92,7 +92,8 @@ func TestExtractFromTranscript_ClearRace(t *testing.T) {
 	}
 }
 
-// TestResolvePromptInput_EnvVars_InvalidStart: invalid PROCESS_START → ProcessStart=0.
+// TestResolvePromptInput_EnvVars_InvalidStart: invalid PROCESS_START → falls back to ppid,
+// ignoring the env override (both env vars must parse successfully to use override).
 func TestResolvePromptInput_EnvVars_InvalidStart(t *testing.T) {
 	t.Setenv("PROCESS_PID", "12345")
 	t.Setenv("PROCESS_START", "notanumber")
@@ -102,7 +103,8 @@ func TestResolvePromptInput_EnvVars_InvalidStart(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if input.ProcessStart != 0 {
-		t.Errorf("ProcessStart = %d, want 0 (degraded)", input.ProcessStart)
+	// Invalid env vars → fallback to os.Getppid(); env PID (12345) is NOT used.
+	if int(input.ProcessPID) != os.Getppid() {
+		t.Errorf("ProcessPID = %d, want %d (ppid fallback)", input.ProcessPID, os.Getppid())
 	}
 }

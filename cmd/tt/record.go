@@ -112,16 +112,17 @@ func resolvePromptInputFromEnv() (recorder.PromptInput, error) {
 	startEnv := os.Getenv("PROCESS_START")
 
 	if pidEnv != "" && startEnv != "" {
-		var out recorder.PromptInput
-		if pid, err := strconv.ParseInt(pidEnv, 10, 64); err == nil {
-			out.ProcessPID = pid
+		pid, pidErr := strconv.ParseInt(pidEnv, 10, 64)
+		start, startErr := strconv.ParseInt(startEnv, 10, 64)
+		if pidErr == nil && startErr == nil && start != 0 {
+			return recorder.PromptInput{ProcessPID: pid, ProcessStart: start}, nil
 		}
-		if start, err := strconv.ParseInt(startEnv, 10, 64); err != nil || start == 0 {
-			fmt.Fprintln(os.Stderr, "tt: PROCESS_START empty or invalid, session key may be unstable")
+		if pidErr != nil {
+			fmt.Fprintln(os.Stderr, "tt: PROCESS_PID invalid, session key may be unstable")
 		} else {
-			out.ProcessStart = start
+			fmt.Fprintln(os.Stderr, "tt: PROCESS_START empty or invalid, session key may be unstable")
 		}
-		return out, nil
+		// fall through to ppid + process.StartTime
 	}
 
 	ppid := os.Getppid()
@@ -253,27 +254,31 @@ func extractFromTranscript(path string) (tokensJSON, model string) {
 		}
 	}
 
-	// Deduplicate assistant entries by usage tuple (same tuple = same API call),
-	// then sum across unique API calls.
+	// sumWindow deduplicates assistant entries by usage tuple and returns their sum.
 	type usageKey struct{ in, out, read, create int }
-	seen := make(map[usageKey]bool)
-	var total usageFields
-	for i := lastUserIdx + 1; i < len(all); i++ {
-		e := all[i]
-		if e.Type != "assistant" || e.IsSidechain {
-			continue
+	sumWindow := func(from, to int) usageFields {
+		seen := make(map[usageKey]bool)
+		var acc usageFields
+		for i := from; i < to; i++ {
+			e := all[i]
+			if e.Type != "assistant" || e.IsSidechain {
+				continue
+			}
+			u := e.Message.Usage
+			k := usageKey{u.InputTokens, u.OutputTokens, u.CacheReadInputTokens, u.CacheCreationInputTokens}
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			acc.InputTokens += u.InputTokens
+			acc.OutputTokens += u.OutputTokens
+			acc.CacheReadInputTokens += u.CacheReadInputTokens
+			acc.CacheCreationInputTokens += u.CacheCreationInputTokens
 		}
-		u := e.Message.Usage
-		key := usageKey{u.InputTokens, u.OutputTokens, u.CacheReadInputTokens, u.CacheCreationInputTokens}
-		if seen[key] {
-			continue
-		}
-		seen[key] = true
-		total.InputTokens += u.InputTokens
-		total.OutputTokens += u.OutputTokens
-		total.CacheReadInputTokens += u.CacheReadInputTokens
-		total.CacheCreationInputTokens += u.CacheCreationInputTokens
+		return acc
 	}
+
+	total := sumWindow(lastUserIdx+1, len(all))
 
 	if total.InputTokens == 0 && total.OutputTokens == 0 {
 		// /clear race: lastUserIdx is the /clear entry; no assistant entries follow it yet.
@@ -286,23 +291,7 @@ func extractFromTranscript(path string) (tokensJSON, model string) {
 					break
 				}
 			}
-			seen = make(map[usageKey]bool)
-			for i := prevUserIdx + 1; i < lastUserIdx; i++ {
-				e := all[i]
-				if e.Type != "assistant" || e.IsSidechain {
-					continue
-				}
-				u := e.Message.Usage
-				key := usageKey{u.InputTokens, u.OutputTokens, u.CacheReadInputTokens, u.CacheCreationInputTokens}
-				if seen[key] {
-					continue
-				}
-				seen[key] = true
-				total.InputTokens += u.InputTokens
-				total.OutputTokens += u.OutputTokens
-				total.CacheReadInputTokens += u.CacheReadInputTokens
-				total.CacheCreationInputTokens += u.CacheCreationInputTokens
-			}
+			total = sumWindow(prevUserIdx+1, lastUserIdx)
 		}
 		if total.InputTokens == 0 && total.OutputTokens == 0 {
 			return "", model
