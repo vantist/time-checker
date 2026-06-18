@@ -92,6 +92,86 @@ func TestExtractFromTranscript_ClearRace(t *testing.T) {
 	}
 }
 
+// TestExtractFromTranscriptAtOffset_OffsetCuts: only assistant entries from offset onwards are summed.
+func TestExtractFromTranscriptAtOffset_OffsetCuts(t *testing.T) {
+	lines := []string{
+		// lines 0-1: old turn (before offset)
+		`{"type":"user","isSidechain":false}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"old-model","usage":{"input_tokens":999,"output_tokens":999,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`,
+		// line 2: user prompt — this is the offset anchor
+		`{"type":"user","isSidechain":false}`,
+		// lines 3-4: new turn assistant entries (dedup: same usage = 1 API call)
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":0}}}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":0}}}`,
+	}
+	path := writeTranscript(t, lines)
+
+	// offset = 2 (line count when prompt was recorded, i.e. first 2 lines existed)
+	tokensJSON, model := extractFromTranscriptAtOffset(path, 2)
+
+	if model != "claude-sonnet-4-6" {
+		t.Errorf("model = %q, want claude-sonnet-4-6", model)
+	}
+	var m map[string]int
+	if err := json.Unmarshal([]byte(tokensJSON), &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if m["input_tokens"] != 100 {
+		t.Errorf("input_tokens = %d, want 100 (old turn must be excluded)", m["input_tokens"])
+	}
+	if m["output_tokens"] != 50 {
+		t.Errorf("output_tokens = %d, want 50", m["output_tokens"])
+	}
+}
+
+// TestExtractFromTranscriptAtOffset_ZeroOffset: behaves like full-transcript scan.
+func TestExtractFromTranscriptAtOffset_ZeroOffset(t *testing.T) {
+	lines := []string{
+		`{"type":"user","isSidechain":false}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-haiku-4-5","usage":{"input_tokens":200,"output_tokens":80,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`,
+	}
+	path := writeTranscript(t, lines)
+
+	tokensJSON, _ := extractFromTranscriptAtOffset(path, 0)
+
+	var m map[string]int
+	if err := json.Unmarshal([]byte(tokensJSON), &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if m["input_tokens"] != 200 {
+		t.Errorf("input_tokens = %d, want 200", m["input_tokens"])
+	}
+}
+
+// TestExtractFromTranscriptAtOffset_OffsetBeyondEnd: returns empty when offset >= line count.
+func TestExtractFromTranscriptAtOffset_OffsetBeyondEnd(t *testing.T) {
+	lines := []string{
+		`{"type":"user","isSidechain":false}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`,
+	}
+	path := writeTranscript(t, lines)
+
+	tokensJSON, _ := extractFromTranscriptAtOffset(path, 999)
+
+	if tokensJSON != "" {
+		t.Errorf("tokensJSON = %q, want empty when offset beyond end", tokensJSON)
+	}
+}
+
+func writeTranscript(t *testing.T, lines []string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "transcript.jsonl")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create transcript: %v", err)
+	}
+	for _, l := range lines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+	return path
+}
+
 // TestResolvePromptInput_EnvVars_InvalidStart: invalid PROCESS_START → falls back to ppid,
 // ignoring the env override (both env vars must parse successfully to use override).
 func TestResolvePromptInput_EnvVars_InvalidStart(t *testing.T) {

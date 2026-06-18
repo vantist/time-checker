@@ -191,6 +191,98 @@ func resolveResponseInput(cmd *cobra.Command) (sessionID, tokensJSON, model stri
 	return sessionID, tokensJSON, model, nil
 }
 
+// extractFromTranscriptAtOffset reads only lines from offset onwards (skipping the
+// first `offset` lines) to sum assistant token entries for the current turn.
+// Model is still resolved from the last non-sidechain assistant entry in the full transcript.
+func extractFromTranscriptAtOffset(path string, offset int) (tokensJSON, model string) {
+	if len(path) >= 2 && path[:2] == "~/" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			path = filepath.Join(home, path[2:])
+		}
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return "", ""
+	}
+	defer f.Close()
+
+	type usageFields struct {
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+	}
+	type transcriptEntry struct {
+		Type        string `json:"type"`
+		IsSidechain bool   `json:"isSidechain"`
+		Message     struct {
+			Model string      `json:"model"`
+			Usage usageFields `json:"usage"`
+		} `json:"message"`
+	}
+
+	var all []transcriptEntry
+	dec := json.NewDecoder(f)
+	for dec.More() {
+		var entry transcriptEntry
+		if err := dec.Decode(&entry); err != nil {
+			continue
+		}
+		all = append(all, entry)
+	}
+
+	// Model from last non-sidechain assistant entry (whole transcript).
+	for i := len(all) - 1; i >= 0; i-- {
+		e := all[i]
+		if e.Type == "assistant" && !e.IsSidechain && e.Message.Model != "" {
+			model = e.Message.Model
+			break
+		}
+	}
+
+	// Clamp offset; if beyond end, nothing to sum.
+	if offset > len(all) {
+		offset = len(all)
+	}
+
+	type usageKey struct{ in, out, read, create int }
+	seen := make(map[usageKey]bool)
+	var acc usageFields
+	for i := offset; i < len(all); i++ {
+		e := all[i]
+		if e.Type != "assistant" || e.IsSidechain {
+			continue
+		}
+		u := e.Message.Usage
+		k := usageKey{u.InputTokens, u.OutputTokens, u.CacheReadInputTokens, u.CacheCreationInputTokens}
+		if seen[k] {
+			continue
+		}
+		seen[k] = true
+		acc.InputTokens += u.InputTokens
+		acc.OutputTokens += u.OutputTokens
+		acc.CacheReadInputTokens += u.CacheReadInputTokens
+		acc.CacheCreationInputTokens += u.CacheCreationInputTokens
+	}
+
+	if acc.InputTokens == 0 && acc.OutputTokens == 0 {
+		return "", model
+	}
+
+	out, err := json.Marshal(map[string]int{
+		"input_tokens":          acc.InputTokens,
+		"output_tokens":         acc.OutputTokens,
+		"cache_read_tokens":     acc.CacheReadInputTokens,
+		"cache_creation_tokens": acc.CacheCreationInputTokens,
+	})
+	if err != nil {
+		return "", model
+	}
+	return string(out), model
+}
+
 // extractFromTranscript reads the transcript JSONL and returns the summed
 // token usage across all API calls in the last user turn as a flat JSON string,
 // plus the model from the last non-sidechain assistant entry.
