@@ -83,6 +83,13 @@ type transcriptUsageFields struct {
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 }
 
+// contentBlock is one element in a transcript entry's content array.
+type contentBlock struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 // transcriptEntry is one JSONL line in a Claude Code transcript file.
 type transcriptEntry struct {
 	Type        string `json:"type"`
@@ -91,6 +98,14 @@ type transcriptEntry struct {
 		Model string                `json:"model"`
 		Usage transcriptUsageFields `json:"usage"`
 	} `json:"message"`
+	Content []contentBlock `json:"content"`
+}
+
+// subagentMeta is the content of agent-<id>.meta.json in the subagents directory.
+type subagentMeta struct {
+	ToolUseID   string `json:"toolUseId"`
+	AgentType   string `json:"agentType"`
+	Description string `json:"description"`
 }
 
 // hookPayload covers both Claude Code and Copilot CLI stdin formats.
