@@ -197,8 +197,8 @@ func TestHasActiveSession(t *testing.T) {
 	// Session with current process (alive)
 	insertSession(t, db, "alive1", int64(os.Getpid()), 0)
 
-	if !hasActiveSession(db) {
-		t.Error("hasActiveSession = false, want true (current process is alive)")
+	if !HasActiveSession(db) {
+		t.Error("HasActiveSession = false, want true (current process is alive)")
 	}
 }
 
@@ -209,7 +209,7 @@ func TestHasActiveSession_NoAlive(t *testing.T) {
 	// PID 0 is never a valid process
 	insertSession(t, db, "dead1", 0, 0)
 
-	if hasActiveSession(db) {
-		t.Error("hasActiveSession = true, want false (no alive processes)")
+	if HasActiveSession(db) {
+		t.Error("HasActiveSession = true, want false (no alive processes)")
 	}
 }
