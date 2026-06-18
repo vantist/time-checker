@@ -50,6 +50,23 @@ func upsertByProcessKey(db *sql.DB, s Session) (string, error) {
 	}
 
 	if errors.Is(err, sql.ErrNoRows) {
+		// Resume detection: same conversation_id, different process (claude --resume).
+		// Update the process key so subsequent /clear calls within this new process hit the same row.
+		if s.ConversationID != "" {
+			var resumeID string
+			resumeErr := db.QueryRow(
+				"SELECT id FROM sessions WHERE conversation_id = ?",
+				s.ConversationID,
+			).Scan(&resumeID)
+			if resumeErr == nil {
+				_, err = db.Exec(
+					"UPDATE sessions SET process_pid = ?, process_start = ? WHERE id = ?",
+					s.ProcessPID, s.ProcessStart, resumeID,
+				)
+				return resumeID, err
+			}
+		}
+
 		_, err = db.Exec(`
 			INSERT INTO sessions
 				(id, project, tool, model, branch, work_item, started_at, process_pid, process_start, conversation_id)

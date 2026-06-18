@@ -87,6 +87,65 @@ func TestUpsertSession_FallbackToID(t *testing.T) {
 	}
 }
 
+// TestUpsertSession_Resume: new process, same conversation_id (claude --resume)
+// → reuses original session row, updates process key, does NOT insert new row.
+func TestUpsertSession_Resume(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TT_DB_PATH", filepath.Join(dir, "test.db"))
+
+	conn, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+
+	// Original session from process P1.
+	orig := db.Session{
+		ID:             "conv-uuid",
+		ProcessPID:     111,
+		ProcessStart:   1700000000,
+		ConversationID: "conv-uuid",
+		Project:        "/proj",
+		Tool:           "claude-code",
+		StartedAt:      time.Now().UTC(),
+	}
+	origID, err := db.UpsertSession(conn, orig)
+	if err != nil {
+		t.Fatalf("first upsert: %v", err)
+	}
+
+	// Resume: new process P2, same conversation_id.
+	resumed := db.Session{
+		ID:             "conv-uuid",
+		ProcessPID:     222,
+		ProcessStart:   1700001000,
+		ConversationID: "conv-uuid",
+		Project:        "/proj",
+		Tool:           "claude-code",
+		StartedAt:      time.Now().UTC(),
+	}
+	resumedID, err := db.UpsertSession(conn, resumed)
+	if err != nil {
+		t.Fatalf("resume upsert: %v", err)
+	}
+
+	if resumedID != origID {
+		t.Errorf("resume returned new id %q, want original %q", resumedID, origID)
+	}
+
+	var count int
+	conn.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&count)
+	if count != 1 {
+		t.Errorf("expected 1 session after resume, got %d", count)
+	}
+
+	var pid int64
+	conn.QueryRow("SELECT process_pid FROM sessions WHERE id = ?", origID).Scan(&pid)
+	if pid != 222 {
+		t.Errorf("process_pid not updated to new process: got %d, want 222", pid)
+	}
+}
+
 func TestUpsertSessionPreservesStartedAt(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("TT_DB_PATH", filepath.Join(dir, "test.db"))
