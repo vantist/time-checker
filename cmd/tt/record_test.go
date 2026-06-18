@@ -315,6 +315,48 @@ func TestExtractSubagentTokens(t *testing.T) {
 	})
 }
 
+// TestExtractFromTranscriptAtOffset_WithSubagents: subagent tokens are included in final result.
+func TestExtractFromTranscriptAtOffset_WithSubagents(t *testing.T) {
+	dir := t.TempDir()
+	// Main transcript: user entry at 0, agent call at 1, assistant at 2
+	mainLines := []string{
+		`{"type":"user","isSidechain":false}`,
+		agentEntry("toolu_sub1"),
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}},"content":[]}`,
+	}
+	path := writeTranscriptInDir(t, dir, mainLines)
+	makeSubagentFixture(t, dir, "eee", "toolu_sub1", []string{
+		subagentAssistantEntry(100, 50, 20, 10),
+	})
+
+	// offset=0 to include all entries
+	tokensJSON, model := extractFromTranscriptAtOffset(path, 0)
+
+	if model != "claude-sonnet-4-6" {
+		t.Errorf("model = %q, want claude-sonnet-4-6", model)
+	}
+	if tokensJSON == "" {
+		t.Fatal("tokensJSON empty, want combined token counts")
+	}
+	var m map[string]int
+	if err := json.Unmarshal([]byte(tokensJSON), &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	// Main: input=10, output=5 + Subagent: input=100, output=50 = total input=110, output=55
+	if m["input_tokens"] != 110 {
+		t.Errorf("input_tokens = %d, want 110 (10 main + 100 subagent)", m["input_tokens"])
+	}
+	if m["output_tokens"] != 55 {
+		t.Errorf("output_tokens = %d, want 55 (5 main + 50 subagent)", m["output_tokens"])
+	}
+	if m["cache_read_tokens"] != 20 {
+		t.Errorf("cache_read_tokens = %d, want 20", m["cache_read_tokens"])
+	}
+	if m["cache_creation_tokens"] != 10 {
+		t.Errorf("cache_creation_tokens = %d, want 10", m["cache_creation_tokens"])
+	}
+}
+
 // TestResolvePromptInput_EnvVars_InvalidStart: invalid PROCESS_START → falls back to ppid,
 // ignoring the env override (both env vars must parse successfully to use override).
 func TestResolvePromptInput_EnvVars_InvalidStart(t *testing.T) {

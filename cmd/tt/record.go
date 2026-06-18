@@ -288,6 +288,12 @@ func extractFromTranscriptAtOffset(path string, offset int) (tokensJSON, model s
 
 	acc := sumWindow(all, offset, len(all))
 
+	sub := extractSubagentTokens(path, all, offset)
+	acc.InputTokens += sub.InputTokens
+	acc.OutputTokens += sub.OutputTokens
+	acc.CacheReadInputTokens += sub.CacheReadInputTokens
+	acc.CacheCreationInputTokens += sub.CacheCreationInputTokens
+
 	if acc.InputTokens == 0 && acc.OutputTokens == 0 {
 		return "", model
 	}
