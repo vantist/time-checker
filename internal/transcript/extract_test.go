@@ -106,7 +106,7 @@ func TestExtractWindow_WithSubagents(t *testing.T) {
 	dir := t.TempDir()
 	mainLines := []string{
 		`{"type":"user","isSidechain":false}`,
-		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5}},"content":[{"type":"tool_use","id":"toolu_sub1","name":"Agent"}]}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"tool_use","id":"toolu_sub1","name":"Agent"}]}}`,
 	}
 	path := filepath.Join(dir, "transcript.jsonl")
 	f, _ := os.Create(path)

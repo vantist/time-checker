@@ -215,7 +215,7 @@ func makeSubagentFixture(t *testing.T, dir, agentID, toolUseID string, agentLine
 
 // agentEntry creates a main-transcript assistant entry with an Agent tool_use content block.
 func agentEntry(toolUseID string) string {
-	return `{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5}},"content":[{"type":"tool_use","id":"` + toolUseID + `","name":"Agent"}]}`
+	return `{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"tool_use","id":"` + toolUseID + `","name":"Agent"}]}}`
 }
 
 // subagentAssistantEntry creates a subagent assistant entry (isSidechain=true).
@@ -322,7 +322,7 @@ func TestExtractFromTranscriptAtOffset_WithSubagents(t *testing.T) {
 	mainLines := []string{
 		`{"type":"user","isSidechain":false}`,
 		agentEntry("toolu_sub1"),
-		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}},"content":[]}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`,
 	}
 	path := writeTranscriptInDir(t, dir, mainLines)
 	makeSubagentFixture(t, dir, "eee", "toolu_sub1", []string{

@@ -97,10 +97,10 @@ type transcriptEntry struct {
 	Type        string `json:"type"`
 	IsSidechain bool   `json:"isSidechain"`
 	Message     struct {
-		Model string                `json:"model"`
-		Usage transcriptUsageFields `json:"usage"`
+		Model   string                `json:"model"`
+		Usage   transcriptUsageFields `json:"usage"`
+		Content []contentBlock        `json:"content"`
 	} `json:"message"`
-	Content []contentBlock `json:"content"`
 }
 
 // subagentMeta is the content of agent-<id>.meta.json in the subagents directory.
@@ -333,7 +333,7 @@ func extractSubagentTokens(transcriptPath string, entries []transcriptEntry, off
 		if e.Type != "assistant" {
 			continue
 		}
-		for _, blk := range e.Content {
+		for _, blk := range e.Message.Content {
 			if blk.Type == "tool_use" && blk.Name == "Agent" && blk.ID != "" {
 				agentIDs[blk.ID] = true
 			}

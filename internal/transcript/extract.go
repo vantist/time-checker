@@ -24,10 +24,10 @@ type entry struct {
 	Type        string `json:"type"`
 	IsSidechain bool   `json:"isSidechain"`
 	Message     struct {
-		Model string      `json:"model"`
-		Usage usageFields `json:"usage"`
+		Model   string         `json:"model"`
+		Usage   usageFields    `json:"usage"`
+		Content []contentBlock `json:"content"`
 	} `json:"message"`
-	Content []contentBlock `json:"content"`
 }
 
 type subagentMeta struct {
@@ -138,7 +138,7 @@ func extractSubagentTokens(transcriptPath string, entries []entry, offset int) u
 		if e.Type != "assistant" {
 			continue
 		}
-		for _, blk := range e.Content {
+		for _, blk := range e.Message.Content {
 			if blk.Type == "tool_use" && blk.Name == "Agent" && blk.ID != "" {
 				agentIDs[blk.ID] = true
 			}
