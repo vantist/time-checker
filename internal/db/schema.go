@@ -63,7 +63,50 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 
-	return addSessionColumns(db)
+	if err := addSessionColumns(db); err != nil {
+		return err
+	}
+	return addTurnColumns(db)
+}
+
+// addTurnColumns adds transcript_path and prompt_line_offset to turns
+// if they don't already exist (SQLite does not support ADD COLUMN IF NOT EXISTS).
+func addTurnColumns(db *sql.DB) error {
+	rows, err := db.Query("PRAGMA table_info(turns)")
+	if err != nil {
+		return err
+	}
+	existing := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull int
+		var dflt interface{}
+		var pk int
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		existing[name] = true
+	}
+	rows.Close()
+
+	alters := []struct {
+		col string
+		def string
+	}{
+		{"transcript_path", "TEXT"},
+		{"prompt_line_offset", "INTEGER"},
+	}
+	for _, a := range alters {
+		if existing[a.col] {
+			continue
+		}
+		if _, err := db.Exec("ALTER TABLE turns ADD COLUMN " + a.col + " " + a.def); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // addSessionColumns adds process_pid, process_start, conversation_id to sessions

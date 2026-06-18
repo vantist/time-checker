@@ -1,8 +1,10 @@
 package recorder
 
 import (
+	"bufio"
 	"database/sql"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -12,12 +14,13 @@ import (
 )
 
 type PromptInput struct {
-	SessionID    string
-	Project      string
-	Tool         string
-	Model        string
-	ProcessPID   int64
-	ProcessStart int64
+	SessionID      string
+	Project        string
+	Tool           string
+	Model          string
+	ProcessPID     int64
+	ProcessStart   int64
+	TranscriptPath string
 }
 
 func RecordPrompt(conn *sql.DB, input PromptInput) error {
@@ -43,11 +46,35 @@ func RecordPrompt(conn *sql.DB, input PromptInput) error {
 	}
 
 	// Use stable session ID for turns so JOIN sessions s ON s.id = t.session_id works.
+	offset := countLines(input.TranscriptPath)
+	var transcriptPath interface{}
+	if input.TranscriptPath != "" {
+		transcriptPath = input.TranscriptPath
+	}
 	_, err = conn.Exec(
-		`INSERT INTO turns (session_id, prompt_at) VALUES (?, ?)`,
-		stableID, now.Format(time.RFC3339),
+		`INSERT INTO turns (session_id, prompt_at, transcript_path, prompt_line_offset) VALUES (?, ?, ?, ?)`,
+		stableID, now.Format(time.RFC3339), transcriptPath, offset,
 	)
 	return err
+}
+
+// countLines returns the number of newline-terminated lines in the file.
+// Returns 0 if the file cannot be opened.
+func countLines(path string) int {
+	if path == "" {
+		return 0
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	n := 0
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		n++
+	}
+	return n
 }
 
 func gitBranch(dir string) string {
