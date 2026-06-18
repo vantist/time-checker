@@ -63,7 +63,7 @@ tr:hover td { background: #1a2234; }
 <div class="section" id="section-workitem">
   <h2>By Work Item</h2>
   <table>
-    <thead><tr><th>Label</th><th>Sessions</th><th>Agent time</th><th>User time</th><th>Cost</th></tr></thead>
+    <thead><tr><th>Label</th><th>Project</th><th>Sessions</th><th>Agent time</th><th>User time</th><th>Cost</th></tr></thead>
     <tbody id="tbl-workitem"></tbody>
   </table>
 </div>
@@ -132,7 +132,7 @@ function render(d) {
   wiBody.innerHTML = '';
   groups.forEach(function(g) {
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td>'+esc(g.label)+'</td><td>'+(g.sessions_count||0)+'</td><td>'+fmtTime(g.agent_time_sec||0)+'</td><td>'+fmtTime(g.user_active_time_sec||0)+'</td><td>'+fmtCost(g.estimated_cost_usd)+'</td>';
+    tr.innerHTML = '<td>'+esc(g.label)+'</td><td>'+esc(g.project)+'</td><td>'+(g.sessions_count||0)+'</td><td>'+fmtTime(g.agent_time_sec||0)+'</td><td>'+fmtTime(g.user_active_time_sec||0)+'</td><td>'+fmtCost(g.estimated_cost_usd)+'</td>';
     wiBody.appendChild(tr);
   });
 
