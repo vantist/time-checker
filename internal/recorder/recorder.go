@@ -24,7 +24,7 @@ func RecordPrompt(conn *sql.DB, input PromptInput) error {
 	now := time.Now().UTC()
 
 	branch := gitBranch(input.Project)
-	wi, _ := workitem.Get()
+	wi, _ := workitem.Get(input.Project)
 
 	stableID, err := db.UpsertSession(conn, db.Session{
 		ID:             input.SessionID,

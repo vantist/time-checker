@@ -14,11 +14,11 @@
 
 ## 3. cmd/tt/work.go — 傳入 CWD
 
-- [ ] 3.1 在 `cmd/tt/work.go` 的 `get` / `set` / `clear` handler 中，以 `os.Getwd()` 取得 CWD 並傳入對應的 `workitem.Get` / `Set` / `Clear`
+- [x] 3.1 在 `cmd/tt/work.go` 的 `get` / `set` / `clear` handler 中，以 `os.Getwd()` 取得 CWD 並傳入對應的 `workitem.Get` / `Set` / `Clear`
 
 ## 4. recorder — 傳入 input.Project
 
-- [ ] 4.1 在 `internal/recorder/recorder.go` 的 `RecordPrompt` 中，將 `workitem.Get()` 呼叫改為 `workitem.Get(input.Project)`
+- [x] 4.1 在 `internal/recorder/recorder.go` 的 `RecordPrompt` 中，將 `workitem.Get()` 呼叫改為 `workitem.Get(input.Project)`
 
 ## 5. 驗證
 
