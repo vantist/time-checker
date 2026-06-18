@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/vantist/time-checker/compare/v1.2.0...v1.3.0) (2026-06-18)
+
+
+### Features
+
+* **docs:** 新增 README 文件以說明 AI 工作時間追蹤器的安裝與使用 ([26cf93c](https://github.com/vantist/time-checker/commit/26cf93c54329e5680b7c0a1a3f9916d3017e9259))
+
 ## [1.2.0](https://github.com/vantist/time-checker/compare/v1.1.0...v1.2.0) (2026-06-18)
 
 
