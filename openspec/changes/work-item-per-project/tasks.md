@@ -22,6 +22,6 @@
 
 ## 5. 驗證
 
-- [ ] 5.1 執行 `go test ./internal/workitem/...` 全部通過
-- [ ] 5.2 執行 `go build ./...` 無編譯錯誤
+- [x] 5.1 執行 `go test ./internal/workitem/...` 全部通過
+- [x] 5.2 執行 `go build ./...` 無編譯錯誤
 - [ ] 5.3 手動驗證：在兩個不同 git repo 分別 `tt work set`，確認切換 repo 後各自顯示對應 work item
