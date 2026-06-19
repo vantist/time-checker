@@ -423,8 +423,6 @@ func formatInt(n int64) string {
 	return string(out)
 }
 
-const separator = "─────────────────────────────────────────"
-
 func FormatText(r Result) string {
 	if r.Empty {
 		return "No data for the selected period.\n"
@@ -443,35 +441,108 @@ func FormatText(r Result) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Sessions:    %d\n", r.SessionsCount)
 	fmt.Fprintf(&b, "Agent time:  %dh %dm\n", agentH, agentM)
-	fmt.Fprintf(&b, "User active: %dh %dm\n", userH, userM)
+	fmt.Fprintf(&b, "User active: %dh %dm\n\n", userH, userM)
 
 	// Tokens block
-	fmt.Fprintf(&b, "─── Tokens %s\n", separator[:30])
+	fmt.Fprintf(&b, "─── Tokens ───\n")
 	fmt.Fprintf(&b, "  Input:        %s\n", formatInt(r.InputTokens))
 	fmt.Fprintf(&b, "  Output:       %s\n", formatInt(r.OutputTokens))
 	fmt.Fprintf(&b, "  Cache read:   %s\n", formatInt(r.CacheReadTokens))
-	fmt.Fprintf(&b, "  Cache create: %s\n", formatInt(r.CacheCreationTokens))
+	fmt.Fprintf(&b, "  Cache create: %s\n\n", formatInt(r.CacheCreationTokens))
 
 	// Cost block
-	fmt.Fprintf(&b, "─── Cost %s\n", separator[:32])
-	fmt.Fprintf(&b, "  Est. cost:  %s\n", cost)
+	fmt.Fprintf(&b, "─── Cost ───\n")
+	fmt.Fprintf(&b, "  Est. cost:  %s\n\n", cost)
 
-	// By Project block
+	// Daily breakdown table
+	if len(r.Daily) > 0 {
+		fmt.Fprintf(&b, "─── Daily (Last 7 Days) ───\n")
+		fmt.Fprintf(&b, "%-12s  %8s  %12s  %13s\n", "Date", "Sessions", "Input Tokens", "Output Tokens")
+		for _, stat := range r.Daily {
+			fmt.Fprintf(&b, "%-12s  %8d  %12s  %13s\n", stat.Date, stat.Sessions, formatInt(stat.InputTokens), formatInt(stat.OutputTokens))
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
+	// By Project table
 	if len(r.ByProject) > 0 {
-		fmt.Fprintf(&b, "─── By Project %s\n", separator[:26])
+		fmt.Fprintf(&b, "─── By Project ───\n")
+		fmt.Fprintf(&b, "%-20s  %8s  %10s  %11s  %15s  %8s\n", "Project", "Sessions", "Agent Time", "User Active", "Tokens (I/O)", "Cost")
 		for _, p := range r.ByProject {
-			ph := p.AgentTimeSec / 3600
-			pm := (p.AgentTimeSec % 3600) / 60
 			pcost := "N/A"
 			if p.CostUSD != nil {
 				pcost = fmt.Sprintf("$%.4f", *p.CostUSD)
 			}
-			fmt.Fprintf(&b, "  %-30s  %3d sessions  %dh %dm  %s\n",
-				p.Project, p.SessionsCount, ph, pm, pcost)
+			fmt.Fprintf(&b, "%-20s  %8d  %10s  %11s  %15s  %8s\n",
+				filepath.Base(p.Project),
+				p.SessionsCount,
+				formatTime(p.AgentTimeSec),
+				formatTime(p.UserActiveTimeSec),
+				fmt.Sprintf("%s / %s", formatInt(p.InputTokens), formatInt(p.OutputTokens)),
+				pcost,
+			)
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
+	// By Work Item table
+	if len(r.Groups) > 0 && (len(r.Groups) > 1 || r.ByWorkItem) {
+		fmt.Fprintf(&b, "─── By Work Item ───\n")
+		fmt.Fprintf(&b, "%-20s  %-15s  %8s  %10s  %11s  %8s\n", "Work Item", "Project", "Sessions", "Agent Time", "User Active", "Cost")
+		for _, g := range r.Groups {
+			gcost := "N/A"
+			if g.EstimatedCostUSD != nil {
+				gcost = fmt.Sprintf("$%.4f", *g.EstimatedCostUSD)
+			}
+			fmt.Fprintf(&b, "%-20s  %-15s  %8d  %10s  %11s  %8s\n",
+				g.Label,
+				g.Project,
+				g.SessionsCount,
+				formatTime(g.AgentTimeSec),
+				formatTime(g.UserActiveTimeSec),
+				gcost,
+			)
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
+	// Sessions log table
+	if len(r.Sessions) > 0 {
+		fmt.Fprintf(&b, "─── Sessions ───\n")
+		fmt.Fprintf(&b, "%-19s  %-15s  %-12s  %-20s  %5s  %10s  %9s  %-15s  %8s\n",
+			"Start Time", "Project", "Branch", "Model", "Turns", "Agent Time", "User Time", "Work Item", "Cost")
+		for _, s := range r.Sessions {
+			scost := "N/A"
+			if s.CostUSD != nil {
+				scost = fmt.Sprintf("$%.4f", *s.CostUSD)
+			}
+			var startTimeStr string
+			if t, err := time.Parse(time.RFC3339, s.StartedAt); err == nil {
+				startTimeStr = t.Local().Format("2006-01-02 15:04:05")
+			} else {
+				startTimeStr = s.StartedAt
+			}
+			fmt.Fprintf(&b, "%-19s  %-15s  %-12s  %-20s  %5d  %10s  %9s  %-15s  %8s\n",
+				startTimeStr,
+				filepath.Base(s.Project),
+				s.Branch,
+				s.Model,
+				s.Turns,
+				formatTime(s.AgentTimeSec),
+				formatTime(s.UserTimeSec),
+				s.WorkItem,
+				scost,
+			)
 		}
 	}
 
 	return b.String()
+}
+
+func formatTime(sec int64) string {
+	h := sec / 3600
+	m := (sec % 3600) / 60
+	return fmt.Sprintf("%dh %dm", h, m)
 }
 
 func FormatJSON(r Result) string {
