@@ -49,6 +49,49 @@ func TestOpenDefaultPathWhenEnvUnset(t *testing.T) {
 	}
 }
 
+// TestAddTurnColumns_NewFields verifies that model, cache_creation_5m_tokens,
+// cache_creation_1h_tokens, subagent_tokens_settled are added on db.Open().
+func TestAddTurnColumns_NewFields(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	t.Setenv("TT_DB_PATH", dbPath)
+
+	conn, err := db.Open()
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer conn.Close()
+
+	for _, col := range []string{"model", "cache_creation_5m_tokens", "cache_creation_1h_tokens", "subagent_tokens_settled"} {
+		var val interface{}
+		err := conn.QueryRow("SELECT " + col + " FROM turns LIMIT 1").Scan(&val)
+		// ErrNoRows is fine — table exists with the column; only error means column missing.
+		if err != nil && err.Error() != "sql: no rows in result set" {
+			t.Errorf("column %q not found: %v", col, err)
+		}
+	}
+}
+
+// TestAddTurnColumns_Idempotent verifies no error when columns already exist.
+func TestAddTurnColumns_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	t.Setenv("TT_DB_PATH", dbPath)
+
+	conn, err := db.Open()
+	if err != nil {
+		t.Fatalf("first Open: %v", err)
+	}
+	conn.Close()
+
+	// Second open should not error even though columns already exist.
+	conn2, err := db.Open()
+	if err != nil {
+		t.Fatalf("second Open (idempotent): %v", err)
+	}
+	conn2.Close()
+}
+
 // TestMigrate_NewColumns verifies that process_pid, process_start, conversation_id
 // columns exist after migration and that existing rows have NULL values.
 func TestMigrate_NewColumns(t *testing.T) {

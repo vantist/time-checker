@@ -97,6 +97,10 @@ func addTurnColumns(db *sql.DB) error {
 	}{
 		{"transcript_path", "TEXT"},
 		{"prompt_line_offset", "INTEGER"},
+		{"model", "TEXT"},
+		{"cache_creation_5m_tokens", "INTEGER"},
+		{"cache_creation_1h_tokens", "INTEGER"},
+		{"subagent_tokens_settled", "BOOLEAN DEFAULT 0"},
 	}
 	for _, a := range alters {
 		if existing[a.col] {
