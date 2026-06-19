@@ -24,6 +24,7 @@ type SessionRow struct {
 	ID           string   `json:"id"`
 	Project      string   `json:"project"`
 	Branch       string   `json:"branch"`
+	Tool         string   `json:"tool"`
 	Model        string   `json:"model"`
 	StartedAt    string   `json:"started_at"`
 	WorkItem     string   `json:"work_item"`
@@ -31,6 +32,15 @@ type SessionRow struct {
 	AgentTimeSec int64    `json:"agent_time_sec"`
 	UserTimeSec  int64    `json:"user_time_sec"`
 	CostUSD      *float64 `json:"cost_usd"`
+}
+
+type AgentSummary struct {
+	Agent     string  `json:"agent"`
+	Sessions  int     `json:"sessions"`
+	AgentTime string  `json:"agent_time"`
+	UserTime  string  `json:"user_time"`
+	Tokens    string  `json:"tokens"`
+	Cost      float64 `json:"cost"`
 }
 
 type Result struct {
@@ -45,6 +55,7 @@ type Result struct {
 	EstimatedCostUSD     *float64         `json:"estimated_cost_usd"`
 	Groups               []GroupResult    `json:"groups"`
 	ByProject            []ProjectSummary `json:"by_project"`
+	ByAgent              []AgentSummary   `json:"by_agent"`
 	Daily                []DailyStat      `json:"daily"`
 	Sessions             []SessionRow     `json:"sessions"`
 	ByWorkItem           bool             `json:"-"`
@@ -306,6 +317,7 @@ type rowData struct {
 	sessionID   string
 	project     string
 	branch      string
+	tool        string
 	model       string
 	startedAt   string
 	workItem    string
@@ -531,3 +543,19 @@ func addCost(dst **float64, val *float64) {
 	}
 	**dst += *val
 }
+
+func normalizeAgentName(tool string) string {
+	tool = strings.TrimSpace(strings.ToLower(tool))
+	if tool == "" {
+		return "unknown"
+	}
+	switch tool {
+	case "claude-code", "claudecode", "claude":
+		return "Claude Code"
+	case "copilot-cli", "copilotcli", "copilot":
+		return "Copilot CLI"
+	default:
+		return tool
+	}
+}
+

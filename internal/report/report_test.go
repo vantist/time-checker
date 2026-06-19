@@ -811,3 +811,66 @@ func TestFormatTextFull(t *testing.T) {
 		t.Errorf("FormatText missing session start time local formatted string %q, got:\n%s", t1Local, text)
 	}
 }
+
+func TestNormalizeAgentName(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"claude-code", "Claude Code"},
+		{"ClaudeCode", "Claude Code"},
+		{"claude", "Claude Code"},
+		{"copilot-cli", "Copilot CLI"},
+		{"CopilotCli", "Copilot CLI"},
+		{"copilot", "Copilot CLI"},
+		{"", "unknown"},
+		{"   ", "unknown"},
+		{"My-Custom-Agent  ", "my-custom-agent"},
+		{"  another-one ", "another-one"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.input, func(t *testing.T) {
+			actual := report.NormalizeAgentName(tc.input)
+			if actual != tc.expected {
+				t.Errorf("NormalizeAgentName(%q) = %q; want %q", tc.input, actual, tc.expected)
+			}
+		})
+	}
+}
+
+func TestDataStructures(t *testing.T) {
+	// Verify that SessionRow has the Tool field
+	row := report.SessionRow{
+		Tool: "Claude Code",
+	}
+	data, err := json.Marshal(row)
+	if err != nil {
+		t.Fatalf("Marshal SessionRow: %v", err)
+	}
+	if !strings.Contains(string(data), `"tool":"Claude Code"`) {
+		t.Errorf("expected marshaled SessionRow to contain Tool field, got %s", string(data))
+	}
+
+	// Verify that Result has ByAgent field
+	res := report.Result{
+		ByAgent: []report.AgentSummary{
+			{
+				Agent:     "Claude Code",
+				Sessions:  5,
+				AgentTime: "2h 30m",
+				UserTime:  "1h 15m",
+				Tokens:    "100 / 50",
+				Cost:      0.15,
+			},
+		},
+	}
+	data2, err := json.Marshal(res)
+	if err != nil {
+		t.Fatalf("Marshal Result: %v", err)
+	}
+	if !strings.Contains(string(data2), `"by_agent"`) {
+		t.Errorf("expected marshaled Result to contain by_agent, got %s", string(data2))
+	}
+}
+
