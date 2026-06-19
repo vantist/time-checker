@@ -59,20 +59,6 @@ var reportCmd = &cobra.Command{
 			fmt.Println(report.FormatJSON(result))
 		default:
 			fmt.Print(report.FormatText(result))
-			if byWorkItem && len(result.Groups) > 0 {
-				fmt.Println("\nBy work item:")
-				for _, g := range result.Groups {
-					costStr := "N/A"
-					if g.EstimatedCostUSD != nil {
-						costStr = fmt.Sprintf("$%.4f", *g.EstimatedCostUSD)
-					}
-					fmt.Printf("  %-20s  %-20s  %dh %dm  %s\n",
-						g.Project, g.Label,
-						g.AgentTimeSec/3600, (g.AgentTimeSec%3600)/60,
-						costStr,
-					)
-				}
-			}
 		}
 		return nil
 	},

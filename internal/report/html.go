@@ -120,7 +120,7 @@ function render(d) {
   projBody.innerHTML = '';
   (d.by_project||[]).forEach(function(p) {
     const tr = document.createElement('tr');
-    tr.innerHTML = '<td>'+esc(p.project)+'</td><td>'+p.sessions+'</td><td>'+fmtTime(p.agent_time_seconds||0)+'</td><td>'+fmtTime(p.user_active_time_sec||0)+'</td><td>'+(p.input_tokens||0)+'</td><td>'+fmtCost(p.cost_usd)+'</td>';
+    tr.innerHTML = '<td>'+esc(p.project)+'</td><td>'+p.sessions+'</td><td>'+fmtTime(p.agent_time_seconds||0)+'</td><td>'+fmtTime(p.user_active_time_sec||0)+'</td><td>'+fmt(p.input_tokens)+' / '+fmt(p.output_tokens)+'</td><td>'+fmtCost(p.cost_usd)+'</td>';
     projBody.appendChild(tr);
   });
 
