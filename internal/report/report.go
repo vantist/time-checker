@@ -241,24 +241,36 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		}
 	}
 
-	var totalAgent, totalUser time.Duration
+	// Build per-session user intervals for cross-session merge
+	sessUserIntervals := make(map[string][]aggregator.Interval, len(sessTurns))
+	var totalAgent time.Duration
 	for sid, turns := range sessTurns {
 		totalAgent += aggregator.AgentTime(turns)
 		var sessStart time.Time
 		if ss := sessMap[sid]; ss != nil {
 			sessStart, _ = time.Parse(time.RFC3339, ss.startedAt)
 		}
-		totalUser += aggregator.UserActiveTime(turns, sessStart, idleThreshold)
+		sessUserIntervals[sid] = aggregator.UserIntervals(turns, sessStart, idleThreshold)
+	}
+
+	// Total user time: collect all intervals across sessions then merge
+	var allIntervals []aggregator.Interval
+	for _, ivs := range sessUserIntervals {
+		allIntervals = append(allIntervals, ivs...)
 	}
 	res.AgentTimeSec = int64(totalAgent.Seconds())
-	res.UserActiveTimeSec = int64(totalUser.Seconds())
+	res.UserActiveTimeSec = int64(aggregator.MergeAndSum(allIntervals).Seconds())
 
-	res.Groups = groupByWorkItem(allRows, sessTurns, idleThreshold)
+	res.Groups = groupByWorkItem(allRows, sessUserIntervals, idleThreshold)
 
 	// build ByProject sorted by sessions desc
 	for proj, ps := range projMap {
 		agentSec := int64(aggregator.AgentTime(ps.turns).Seconds())
-		userSec := int64(aggregator.UserActiveTime(ps.turns, time.Time{}, idleThreshold).Seconds())
+		var projIntervals []aggregator.Interval
+		for sid := range ps.sessions {
+			projIntervals = append(projIntervals, sessUserIntervals[sid]...)
+		}
+		userSec := int64(aggregator.MergeAndSum(projIntervals).Seconds())
 		res.ByProject = append(res.ByProject, ProjectSummary{
 			Project:           proj,
 			SessionsCount:     len(ps.sessions),
@@ -274,8 +286,7 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 	// build Sessions sorted by started_at desc
 	for sid, ss := range sessMap {
 		agentSec := int64(aggregator.AgentTime(sessTurns[sid]).Seconds())
-		sessStart, _ := time.Parse(time.RFC3339, ss.startedAt)
-		userSec := int64(aggregator.UserActiveTime(sessTurns[sid], sessStart, idleThreshold).Seconds())
+		userSec := int64(aggregator.MergeAndSum(sessUserIntervals[sid]).Seconds())
 		res.Sessions = append(res.Sessions, SessionRow{
 			ID:           sid,
 			Project:      ss.project,
@@ -320,7 +331,7 @@ type rowData struct {
 	cost        *float64
 }
 
-func groupByWorkItem(rows []rowData, sessTurns map[string][]aggregator.Turn, idleThreshold time.Duration) []GroupResult {
+func groupByWorkItem(rows []rowData, sessUserIntervals map[string][]aggregator.Interval, idleThreshold time.Duration) []GroupResult {
 	type groupKey struct{ project, label string }
 	type groupState struct {
 		project  string
@@ -351,6 +362,7 @@ func groupByWorkItem(rows []rowData, sessTurns map[string][]aggregator.Turn, idl
 			g.sessions[r.sessionID] = struct{}{}
 		}
 		g := sessGroup[r.sessionID]
+		g.turns = append(g.turns, aggregator.Turn{PromptAt: r.promptAt, ResponseAt: r.responseAt})
 		if r.cost != nil {
 			if g.cost == nil {
 				v := 0.0
@@ -360,16 +372,14 @@ func groupByWorkItem(rows []rowData, sessTurns map[string][]aggregator.Turn, idl
 		}
 	}
 
-	for sessID, turns := range sessTurns {
-		if g, ok := sessGroup[sessID]; ok {
-			g.turns = append(g.turns, turns...)
-		}
-	}
-
 	var result []GroupResult
 	for _, g := range groups {
 		agentSec := int64(aggregator.AgentTime(g.turns).Seconds())
-		userSec := int64(aggregator.UserActiveTime(g.turns, time.Time{}, idleThreshold).Seconds())
+		var groupIntervals []aggregator.Interval
+		for sid := range g.sessions {
+			groupIntervals = append(groupIntervals, sessUserIntervals[sid]...)
+		}
+		userSec := int64(aggregator.MergeAndSum(groupIntervals).Seconds())
 		result = append(result, GroupResult{
 			Label:             g.label,
 			Project:           filepath.Base(g.project),

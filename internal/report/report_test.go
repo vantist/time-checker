@@ -502,11 +502,11 @@ func TestSessionDuration_SpanConversations(t *testing.T) {
 		t.Fatalf("expected 1 session, got %d", len(result.Sessions))
 	}
 
-	// Both turns span 10m30s; with idle threshold of 15m no gap truncation.
-	// UserActiveTimeSec should be > 600 (10 minutes) and < 700.
+	// New semantics: user time = response_at[i-1] → prompt_at[i]
+	// interval = [T+30s, T+10m] = 9m30s = 570s (agent processing time excluded)
 	sess := result.Sessions[0]
-	if sess.UserTimeSec < 600 || sess.UserTimeSec > 700 {
-		t.Errorf("UserTimeSec = %d, want ~630 (10m30s span)", sess.UserTimeSec)
+	if sess.UserTimeSec < 560 || sess.UserTimeSec > 580 {
+		t.Errorf("UserTimeSec = %d, want ~570 (9m30s: response→next_prompt)", sess.UserTimeSec)
 	}
 }
 
@@ -554,6 +554,109 @@ func TestGroupByWorkItem_ProjectField(t *testing.T) {
 	}
 	if g.Label != "main" {
 		t.Errorf("GroupResult.Label = %q, want %q", g.Label, "main")
+	}
+}
+
+// fix-user-time-semantics 2.1: 兩個重疊 sessions，總計 UserTime 不重複計算
+func TestTotalUserTime_OverlappingSessionsMerged(t *testing.T) {
+	conn := openTestDB(t)
+	base := time.Date(2026, 6, 19, 10, 0, 0, 0, time.UTC)
+
+	// Session A: turn1 response=T+1m, turn2 prompt=T+6m → interval [T+1m, T+6m] = 5m
+	insertSession(t, conn, "ov-a", "/proj", "main", "")
+	raA1 := base.Add(1 * time.Minute)
+	insertTurnFull(t, conn, "ov-a", base, &raA1, 0, 0, 0, 0, nil)
+	insertTurnFull(t, conn, "ov-a", base.Add(6*time.Minute), nil, 0, 0, 0, 0, nil)
+
+	// Session B: turn1 response=T+3m, turn2 prompt=T+11m → interval [T+3m, T+11m] = 8m
+	// Overlap with A: [T+3m, T+6m] = 3m
+	insertSession(t, conn, "ov-b", "/proj", "main", "")
+	raB1 := base.Add(3 * time.Minute)
+	insertTurnFull(t, conn, "ov-b", base.Add(2*time.Minute), &raB1, 0, 0, 0, 0, nil)
+	insertTurnFull(t, conn, "ov-b", base.Add(11*time.Minute), nil, 0, 0, 0, 0, nil)
+
+	// Raw sum = 5m + 8m = 13m. Merged = [T+1m, T+11m] = 10m
+	result, err := report.Query(conn, report.Options{Since: base.Add(-time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	// Must be 10m (600s), not 13m (780s)
+	want := int64(600)
+	if result.UserActiveTimeSec != want {
+		t.Errorf("UserActiveTimeSec = %d, want %d (overlap must not double-count)", result.UserActiveTimeSec, want)
+	}
+}
+
+// fix-user-time-semantics 2.2: ByProject 同一 project 重疊 sessions merge
+func TestByProjectUserTime_OverlappingSessionsMerged(t *testing.T) {
+	conn := openTestDB(t)
+	base := time.Date(2026, 6, 19, 10, 0, 0, 0, time.UTC)
+
+	// Session A: interval [T+1m, T+6m] = 5m
+	insertSession(t, conn, "bp-ov-a", "/shared-proj", "main", "")
+	raA := base.Add(1 * time.Minute)
+	insertTurnFull(t, conn, "bp-ov-a", base, &raA, 0, 0, 0, 0, nil)
+	insertTurnFull(t, conn, "bp-ov-a", base.Add(6*time.Minute), nil, 0, 0, 0, 0, nil)
+
+	// Session B: interval [T+3m, T+11m] = 8m (overlaps with A by 3m)
+	insertSession(t, conn, "bp-ov-b", "/shared-proj", "main", "")
+	raB := base.Add(3 * time.Minute)
+	insertTurnFull(t, conn, "bp-ov-b", base.Add(2*time.Minute), &raB, 0, 0, 0, 0, nil)
+	insertTurnFull(t, conn, "bp-ov-b", base.Add(11*time.Minute), nil, 0, 0, 0, 0, nil)
+
+	result, err := report.Query(conn, report.Options{Since: base.Add(-time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(result.ByProject) == 0 {
+		t.Fatal("ByProject empty")
+	}
+	// merged = [T+1m, T+11m] = 10m = 600s
+	want := int64(600)
+	if result.ByProject[0].UserActiveTimeSec != want {
+		t.Errorf("ByProject UserActiveTimeSec = %d, want %d", result.ByProject[0].UserActiveTimeSec, want)
+	}
+}
+
+// fix-user-time-semantics 2.3: ByWorkItem 同一 work item 重疊 sessions merge
+func TestByWorkItemUserTime_OverlappingSessionsMerged(t *testing.T) {
+	conn := openTestDB(t)
+	base := time.Date(2026, 6, 19, 10, 0, 0, 0, time.UTC)
+
+	// Session A: interval [T+1m, T+6m] = 5m
+	insertSession(t, conn, "wi-ov-a", "/proj", "main", "feat-x")
+	raA := base.Add(1 * time.Minute)
+	insertTurnFull(t, conn, "wi-ov-a", base, &raA, 0, 0, 0, 0, nil)
+	insertTurnFull(t, conn, "wi-ov-a", base.Add(6*time.Minute), nil, 0, 0, 0, 0, nil)
+
+	// Session B: interval [T+3m, T+11m] = 8m (overlaps with A by 3m)
+	insertSession(t, conn, "wi-ov-b", "/proj", "main", "feat-x")
+	raB := base.Add(3 * time.Minute)
+	insertTurnFull(t, conn, "wi-ov-b", base.Add(2*time.Minute), &raB, 0, 0, 0, 0, nil)
+	insertTurnFull(t, conn, "wi-ov-b", base.Add(11*time.Minute), nil, 0, 0, 0, 0, nil)
+
+	result, err := report.Query(conn, report.Options{Since: base.Add(-time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	if len(result.Groups) == 0 {
+		t.Fatal("Groups empty")
+	}
+	// find feat-x group
+	var g *report.GroupResult
+	for i := range result.Groups {
+		if result.Groups[i].Label == "feat-x" {
+			g = &result.Groups[i]
+			break
+		}
+	}
+	if g == nil {
+		t.Fatal("feat-x group not found")
+	}
+	// merged = [T+1m, T+11m] = 10m = 600s
+	want := int64(600)
+	if g.UserActiveTimeSec != want {
+		t.Errorf("GroupResult UserActiveTimeSec = %d, want %d", g.UserActiveTimeSec, want)
 	}
 }
 
