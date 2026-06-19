@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.7.0](https://github.com/vantist/time-tracker/compare/v1.6.0...v1.7.0) (2026-06-19)
+
+
+### Features
+
+* **dashboard:** display model usages ratio and details in web dashboard ([8942088](https://github.com/vantist/time-tracker/commit/89420883e00b0d2d37b65fab01ece02b7713b381))
+* **db:** add turn_model_usages table and migrate backfill ([8a1b8cd](https://github.com/vantist/time-tracker/commit/8a1b8cd2a0da027940baa006e470aa3613c622ea))
+* **pricing:** support cost calculation for single ModelUsage ([6878796](https://github.com/vantist/time-tracker/commit/68787960fd2736fe20db0c259066653b13b4ebb0))
+* **recorder,reconcile:** write details to turn_model_usages on response and reconcile ([476a911](https://github.com/vantist/time-tracker/commit/476a9118d0e283d3794c6df89f658c25d636b013))
+* **report:** add agent normalization and report data structures ([d529f36](https://github.com/vantist/time-tracker/commit/d529f365719b2de9e49f00196e3aa152e2c7b0b9))
+* **report:** aggregate sessions and calculate user active time by agent ([15cba3c](https://github.com/vantist/time-tracker/commit/15cba3ce6d000be33f9e69aa37dd96b991b9f4ca))
+* **report:** format by agent summary and include agent field in cli text output ([b72e095](https://github.com/vantist/time-tracker/commit/b72e095d4d255ce5beb0880087aabbc3c8639dde))
+* **report:** load sessions tool column in SQL query ([54a4f14](https://github.com/vantist/time-tracker/commit/54a4f14dc4fc2ab1b13cfcde69f28a25f2bcf581))
+* **report:** support model usage breakdown in CLI report ([a1c250b](https://github.com/vantist/time-tracker/commit/a1c250b849ac9d3a93cf5da3418325a7855aefff))
+* **serve:** render by agent table and agent column in dashboard web ui ([a2d9ac8](https://github.com/vantist/time-tracker/commit/a2d9ac87b30e18da0f947c325ea91c1c1b2668b0))
+* **transcript:** add ModelUsage structure and aggregate subagents by model ([983eea2](https://github.com/vantist/time-tracker/commit/983eea28781ff1eb358fd7bb8eda2301fe264cee))
+
 ## [1.6.0](https://github.com/vantist/time-tracker/compare/v1.5.0...v1.6.0) (2026-06-19)
 
 
