@@ -261,7 +261,7 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 	res.AgentTimeSec = int64(totalAgent.Seconds())
 	res.UserActiveTimeSec = int64(aggregator.MergeAndSum(allIntervals).Seconds())
 
-	res.Groups = groupByWorkItem(allRows, sessUserIntervals, idleThreshold)
+	res.Groups = groupByWorkItem(allRows, sessUserIntervals)
 
 	// build ByProject sorted by sessions desc
 	for proj, ps := range projMap {
@@ -331,7 +331,7 @@ type rowData struct {
 	cost        *float64
 }
 
-func groupByWorkItem(rows []rowData, sessUserIntervals map[string][]aggregator.Interval, idleThreshold time.Duration) []GroupResult {
+func groupByWorkItem(rows []rowData, sessUserIntervals map[string][]aggregator.Interval) []GroupResult {
 	type groupKey struct{ project, label string }
 	type groupState struct {
 		project  string

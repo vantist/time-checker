@@ -1,5 +1,21 @@
 # Spex Insights
 
+## [spex-apply] fix-user-time-semantics — 2026-06-19
+
+### Promote candidates
+
+- [ ] `d > 0` guard in interval keep closure — 任何 interval-based 計算都應守衛非正值
+  > **Why**: 當 sessionStart > turns[0].PromptAt（時鐘偏差或資料異常）時產生負 duration，不守衛會讓 user time 縮水。
+  > **How to apply**: 每次建立 Interval 後計算 duration 前先檢查 d > 0；interval 過濾條件應同時守衛正值與 idle threshold。
+
+- [ ] Dead parameter check after function signature refactor
+  > **Why**: `groupByWorkItem` 改用 `sessUserIntervals` 後，`idleThreshold` 參數未一起清理，code review 才發現。編譯器不報錯，呼叫方 misleading。
+  > **How to apply**: 改函數簽章時立即 grep 函數體確認所有參數都被使用；把計算移至外層後舊 threshold/config 參數最容易成為殭屍。
+
+**Plan deviations:** none
+
+---
+
 ## [spex-debugging] workflow-subagent-tokens-missing — 2026-06-18
 
 ### Promote candidates
