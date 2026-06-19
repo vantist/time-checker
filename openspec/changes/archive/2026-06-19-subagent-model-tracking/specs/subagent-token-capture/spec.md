@@ -1,8 +1,5 @@
-# subagent-token-capture Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change subagent-token-capture. Update Purpose after archive.
-## Requirements
 ### Requirement: 提取 subagent token 並合入 turn 成本
 
 系統 SHALL 在執行 `tt record response` 或 `reconcile` 時，掃描主 transcript 中 `[from, to)` 範圍內的 `tool_use` entries，找出 `name == "Agent"` 的呼叫，透過對應的 `meta.json` 找到 subagent jsonl，提取 subagent 的 model 與 token 消耗，並以 `is_subagent = 1` 歸屬。

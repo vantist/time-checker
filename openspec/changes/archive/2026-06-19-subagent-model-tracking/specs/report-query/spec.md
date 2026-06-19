@@ -1,8 +1,5 @@
-# report-query Specification
+## MODIFIED Requirements
 
-## Purpose
-TBD - created by archiving change ai-tool-time-tracker. Update Purpose after archive.
-## Requirements
 ### Requirement: 基本報表輸出
 
 系統 SHALL 透過 `tt report` 命令輸出過去 7 天（預設）的聚合統計，格式為純文字，包含：
@@ -57,4 +54,3 @@ TBD - created by archiving change ai-tool-time-tracker. Update Purpose after arc
 - **THEN** stdout 為合法 JSON，可被 `jq` 解析
 - **THEN** JSON 包含 `sessions_count`, `agent_time_sec`, `user_active_time_sec`, `input_tokens`, `output_tokens`, `estimated_cost_usd` 欄位
 - **THEN** JSON 中包含 `model_usages` 陣列，詳細列出各 model 的 Token 與費用小計，且區分 `is_subagent`
-
