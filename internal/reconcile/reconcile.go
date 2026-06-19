@@ -146,13 +146,13 @@ func reconcile(conn *sql.DB) {
 		}
 
 		result, err := transcript.ExtractWindow(dt.transcriptPath, dt.promptLineOffset, to)
-		if err != nil || (result.InputTokens == 0 && result.OutputTokens == 0) {
+		if err != nil || (result.InputTokens() == 0 && result.OutputTokens() == 0) {
 			continue
 		}
 
 		var cost *float64
-		if result.Model != "" {
-			cost = pricing.Calculate(result.Model, result.InputTokens, result.OutputTokens, result.CacheReadTokens, result.CacheCreationTokens, result.CacheCreate5m, result.CacheCreate1h)
+		if result.Model() != "" {
+			cost = pricing.Calculate(result.Model(), result.InputTokens(), result.OutputTokens(), result.CacheReadTokens(), result.CacheCreationTokens(), result.CacheCreate5m(), result.CacheCreate1h())
 		}
 
 		if dt.responseAt != nil {
@@ -162,8 +162,8 @@ func reconcile(conn *sql.DB) {
 				 cache_creation_5m_tokens=?, cache_creation_1h_tokens=?, model=?,
 				 estimated_cost_usd=?, subagent_tokens_settled=1
 				 WHERE id=?`,
-				result.InputTokens, result.OutputTokens, result.CacheReadTokens, result.CacheCreationTokens,
-				result.CacheCreate5m, result.CacheCreate1h, result.Model,
+				result.InputTokens(), result.OutputTokens(), result.CacheReadTokens(), result.CacheCreationTokens(),
+				result.CacheCreate5m(), result.CacheCreate1h(), result.Model(),
 				cost,
 				dt.id,
 			)
@@ -184,8 +184,8 @@ func reconcile(conn *sql.DB) {
 				 estimated_cost_usd=?, subagent_tokens_settled=1
 				 WHERE id=? AND response_at IS NULL`,
 				responseAt.UTC().Format(time.RFC3339Nano),
-				result.InputTokens, result.OutputTokens, result.CacheReadTokens, result.CacheCreationTokens,
-				result.CacheCreate5m, result.CacheCreate1h, result.Model,
+				result.InputTokens(), result.OutputTokens(), result.CacheReadTokens(), result.CacheCreationTokens(),
+				result.CacheCreate5m(), result.CacheCreate1h(), result.Model(),
 				cost,
 				dt.id,
 			)

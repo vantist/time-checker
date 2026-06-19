@@ -233,30 +233,30 @@ func resolveTokensFromTranscript(conn *sql.DB, sessionID, transcriptPath string)
 // extractFromTranscriptAtOffset extracts token usage from offset to EOF.
 func extractFromTranscriptAtOffset(path string, offset int) (tokensJSON, model string) {
 	result, err := transcript.ExtractWindow(path, offset, -1)
-	if err != nil || (result.InputTokens == 0 && result.OutputTokens == 0) {
-		return "", result.Model
+	if err != nil || (result.InputTokens() == 0 && result.OutputTokens() == 0) {
+		return "", result.Model()
 	}
-	return marshalWindowResult(result), result.Model
+	return marshalWindowResult(result), result.Model()
 }
 
 // extractFromTranscript extracts token usage for the last user turn.
 func extractFromTranscript(path string) (tokensJSON, model string) {
 	result, err := transcript.ExtractLastTurn(path)
-	if err != nil || (result.InputTokens == 0 && result.OutputTokens == 0) {
-		return "", result.Model
+	if err != nil || (result.InputTokens() == 0 && result.OutputTokens() == 0) {
+		return "", result.Model()
 	}
-	return marshalWindowResult(result), result.Model
+	return marshalWindowResult(result), result.Model()
 }
 
 // marshalWindowResult converts a WindowResult to the JSON string format expected by RecordResponse.
 func marshalWindowResult(r transcript.WindowResult) string {
 	out, err := json.Marshal(map[string]int{
-		"input_tokens":              r.InputTokens,
-		"output_tokens":             r.OutputTokens,
-		"cache_read_tokens":         r.CacheReadTokens,
-		"cache_creation_tokens":     r.CacheCreationTokens,
-		"cache_creation_5m_tokens":  r.CacheCreate5m,
-		"cache_creation_1h_tokens":  r.CacheCreate1h,
+		"input_tokens":              r.InputTokens(),
+		"output_tokens":             r.OutputTokens(),
+		"cache_read_tokens":         r.CacheReadTokens(),
+		"cache_creation_tokens":     r.CacheCreationTokens(),
+		"cache_creation_5m_tokens":  r.CacheCreate5m(),
+		"cache_creation_1h_tokens":  r.CacheCreate1h(),
 	})
 	if err != nil {
 		return ""

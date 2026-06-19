@@ -8,15 +8,78 @@ import (
 )
 
 
-// WindowResult holds extracted token usage and model for a transcript window.
-type WindowResult struct {
+// ModelUsage details token usage for a specific model and role.
+type ModelUsage struct {
+	Model               string
+	IsSubagent          bool
 	InputTokens         int
 	OutputTokens        int
 	CacheReadTokens     int
-	CacheCreationTokens int // total cache creation (5m + 1h)
-	CacheCreate5m       int // ephemeral_5m_input_tokens
-	CacheCreate1h       int // ephemeral_1h_input_tokens
-	Model               string
+	CacheCreationTokens int
+	CacheCreation5m     int
+	CacheCreation1h     int
+}
+
+// WindowResult holds extracted token usage and model for a transcript window.
+type WindowResult struct {
+	Usages []ModelUsage
+}
+
+func (r WindowResult) Model() string {
+	for _, u := range r.Usages {
+		if !u.IsSubagent {
+			return u.Model
+		}
+	}
+	return ""
+}
+
+func (r WindowResult) InputTokens() int {
+	var total int
+	for _, u := range r.Usages {
+		total += u.InputTokens
+	}
+	return total
+}
+
+func (r WindowResult) OutputTokens() int {
+	var total int
+	for _, u := range r.Usages {
+		total += u.OutputTokens
+	}
+	return total
+}
+
+func (r WindowResult) CacheReadTokens() int {
+	var total int
+	for _, u := range r.Usages {
+		total += u.CacheReadTokens
+	}
+	return total
+}
+
+func (r WindowResult) CacheCreationTokens() int {
+	var total int
+	for _, u := range r.Usages {
+		total += u.CacheCreationTokens
+	}
+	return total
+}
+
+func (r WindowResult) CacheCreate5m() int {
+	var total int
+	for _, u := range r.Usages {
+		total += u.CacheCreation5m
+	}
+	return total
+}
+
+func (r WindowResult) CacheCreate1h() int {
+	var total int
+	for _, u := range r.Usages {
+		total += u.CacheCreation1h
+	}
+	return total
 }
 
 type cacheCreationFields struct {
@@ -61,15 +124,16 @@ func ExtractWindow(path string, from, to int) (WindowResult, error) {
 		return WindowResult{}, err
 	}
 
-	var result WindowResult
-
-	// Model from last non-sidechain assistant entry (whole transcript).
+	var mainModel string
 	for i := len(all) - 1; i >= 0; i-- {
 		e := all[i]
 		if e.Type == "assistant" && !e.IsSidechain && e.Message.Model != "" {
-			result.Model = e.Message.Model
+			mainModel = e.Message.Model
 			break
 		}
+	}
+	if mainModel == "" {
+		mainModel = "unknown"
 	}
 
 	end := len(all)
@@ -82,20 +146,22 @@ func ExtractWindow(path string, from, to int) (WindowResult, error) {
 
 	acc := sumWindow(all, from, end)
 
-	sub := extractSubagentTokens(path, all, from, end)
-	acc.InputTokens += sub.InputTokens
-	acc.OutputTokens += sub.OutputTokens
-	acc.CacheReadInputTokens += sub.CacheReadInputTokens
-	acc.CacheCreationInputTokens += sub.CacheCreationInputTokens
-	acc.CacheCreation.Ephemeral5m += sub.CacheCreation.Ephemeral5m
-	acc.CacheCreation.Ephemeral1h += sub.CacheCreation.Ephemeral1h
+	var result WindowResult
+	if acc.InputTokens > 0 || acc.OutputTokens > 0 || mainModel != "unknown" {
+		result.Usages = append(result.Usages, ModelUsage{
+			Model:               mainModel,
+			IsSubagent:          false,
+			InputTokens:         acc.InputTokens,
+			OutputTokens:        acc.OutputTokens,
+			CacheReadTokens:     acc.CacheReadInputTokens,
+			CacheCreationTokens: acc.CacheCreationInputTokens,
+			CacheCreation5m:     acc.CacheCreation.Ephemeral5m,
+			CacheCreation1h:     acc.CacheCreation.Ephemeral1h,
+		})
+	}
 
-	result.InputTokens = acc.InputTokens
-	result.OutputTokens = acc.OutputTokens
-	result.CacheReadTokens = acc.CacheReadInputTokens
-	result.CacheCreationTokens = acc.CacheCreationInputTokens
-	result.CacheCreate5m = acc.CacheCreation.Ephemeral5m
-	result.CacheCreate1h = acc.CacheCreation.Ephemeral1h
+	subUsages := extractSubagentModelUsages(path, all, from, end)
+	result.Usages = append(result.Usages, subUsages...)
 
 	return result, nil
 }
@@ -112,15 +178,16 @@ func ExtractLastTurn(path string) (WindowResult, error) {
 		return WindowResult{}, nil
 	}
 
-	var result WindowResult
-
-	// Model: search entire transcript for last non-sidechain assistant entry.
+	var mainModel string
 	for i := len(all) - 1; i >= 0; i-- {
 		e := all[i]
 		if e.Type == "assistant" && !e.IsSidechain && e.Message.Model != "" {
-			result.Model = e.Message.Model
+			mainModel = e.Message.Model
 			break
 		}
+	}
+	if mainModel == "" {
+		mainModel = "unknown"
 	}
 
 	lastUserIdx := -1
@@ -147,20 +214,22 @@ func ExtractLastTurn(path string) (WindowResult, error) {
 		acc = sumWindow(all, winFrom, winTo)
 	}
 
-	sub := extractSubagentTokens(path, all, winFrom, winTo)
-	acc.InputTokens += sub.InputTokens
-	acc.OutputTokens += sub.OutputTokens
-	acc.CacheReadInputTokens += sub.CacheReadInputTokens
-	acc.CacheCreationInputTokens += sub.CacheCreationInputTokens
-	acc.CacheCreation.Ephemeral5m += sub.CacheCreation.Ephemeral5m
-	acc.CacheCreation.Ephemeral1h += sub.CacheCreation.Ephemeral1h
+	var result WindowResult
+	if acc.InputTokens > 0 || acc.OutputTokens > 0 || mainModel != "unknown" {
+		result.Usages = append(result.Usages, ModelUsage{
+			Model:               mainModel,
+			IsSubagent:          false,
+			InputTokens:         acc.InputTokens,
+			OutputTokens:        acc.OutputTokens,
+			CacheReadTokens:     acc.CacheReadInputTokens,
+			CacheCreationTokens: acc.CacheCreationInputTokens,
+			CacheCreation5m:     acc.CacheCreation.Ephemeral5m,
+			CacheCreation1h:     acc.CacheCreation.Ephemeral1h,
+		})
+	}
 
-	result.InputTokens = acc.InputTokens
-	result.OutputTokens = acc.OutputTokens
-	result.CacheReadTokens = acc.CacheReadInputTokens
-	result.CacheCreationTokens = acc.CacheCreationInputTokens
-	result.CacheCreate5m = acc.CacheCreation.Ephemeral5m
-	result.CacheCreate1h = acc.CacheCreation.Ephemeral1h
+	subUsages := extractSubagentModelUsages(path, all, winFrom, winTo)
+	result.Usages = append(result.Usages, subUsages...)
 
 	return result, nil
 }
@@ -214,8 +283,9 @@ func sumWindow(all []entry, from, to int) usageFields {
 	return acc
 }
 
-// extractSubagentTokens scans entries[from:min(to,len(entries))] for Agent tool_use IDs.
-func extractSubagentTokens(transcriptPath string, entries []entry, from, to int) usageFields {
+// extractSubagentModelUsages scans entries[from:min(to,len(entries))] for Agent tool_use IDs,
+// and extracts token usage grouped by model.
+func extractSubagentModelUsages(transcriptPath string, entries []entry, from, to int) []ModelUsage {
 	if to > len(entries) {
 		to = len(entries)
 	}
@@ -232,16 +302,16 @@ func extractSubagentTokens(transcriptPath string, entries []entry, from, to int)
 		}
 	}
 	if len(agentIDs) == 0 {
-		return usageFields{}
+		return nil
 	}
 
 	subagentsDir := filepath.Join(strings.TrimSuffix(transcriptPath, ".jsonl"), "subagents")
 	metas, err := filepath.Glob(filepath.Join(subagentsDir, "*.meta.json"))
 	if err != nil || len(metas) == 0 {
-		return usageFields{}
+		return nil
 	}
 
-	var acc usageFields
+	subUsages := make(map[string]*ModelUsage)
 	for _, metaPath := range metas {
 		data, err := os.ReadFile(metaPath)
 		if err != nil {
@@ -256,15 +326,42 @@ func extractSubagentTokens(transcriptPath string, entries []entry, from, to int)
 		if err != nil {
 			continue
 		}
+
+		var model string
+		for i := len(agentEntries) - 1; i >= 0; i-- {
+			e := agentEntries[i]
+			if e.Type == "assistant" && e.Message.Model != "" {
+				model = e.Message.Model
+				break
+			}
+		}
+		if model == "" {
+			model = "unknown"
+		}
+
 		sub := sumSubagentWindow(agentEntries)
-		acc.InputTokens += sub.InputTokens
-		acc.OutputTokens += sub.OutputTokens
-		acc.CacheReadInputTokens += sub.CacheReadInputTokens
-		acc.CacheCreationInputTokens += sub.CacheCreationInputTokens
-		acc.CacheCreation.Ephemeral5m += sub.CacheCreation.Ephemeral5m
-		acc.CacheCreation.Ephemeral1h += sub.CacheCreation.Ephemeral1h
+
+		u, exists := subUsages[model]
+		if !exists {
+			u = &ModelUsage{
+				Model:      model,
+				IsSubagent: true,
+			}
+			subUsages[model] = u
+		}
+		u.InputTokens += sub.InputTokens
+		u.OutputTokens += sub.OutputTokens
+		u.CacheReadTokens += sub.CacheReadInputTokens
+		u.CacheCreationTokens += sub.CacheCreationInputTokens
+		u.CacheCreation5m += sub.CacheCreation.Ephemeral5m
+		u.CacheCreation1h += sub.CacheCreation.Ephemeral1h
 	}
-	return acc
+
+	var results []ModelUsage
+	for _, u := range subUsages {
+		results = append(results, *u)
+	}
+	return results
 }
 
 func sumSubagentWindow(entries []entry) usageFields {

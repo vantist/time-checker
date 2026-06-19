@@ -25,11 +25,11 @@ func TestExtractLastTurn_ClearRace(t *testing.T) {
 		t.Fatalf("ExtractLastTurn: %v", err)
 	}
 	// should fall back to prev turn: input=100, output=50
-	if result.InputTokens != 100 {
-		t.Errorf("InputTokens = %d, want 100 (fallback to prev turn)", result.InputTokens)
+	if result.InputTokens() != 100 {
+		t.Errorf("InputTokens = %d, want 100 (fallback to prev turn)", result.InputTokens())
 	}
-	if result.OutputTokens != 50 {
-		t.Errorf("OutputTokens = %d, want 50 (fallback to prev turn)", result.OutputTokens)
+	if result.OutputTokens() != 50 {
+		t.Errorf("OutputTokens = %d, want 50 (fallback to prev turn)", result.OutputTokens())
 	}
 }
 
@@ -47,8 +47,8 @@ func TestExtractLastTurn_Normal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractLastTurn: %v", err)
 	}
-	if result.InputTokens != 200 {
-		t.Errorf("InputTokens = %d, want 200", result.InputTokens)
+	if result.InputTokens() != 200 {
+		t.Errorf("InputTokens = %d, want 200", result.InputTokens())
 	}
 }
 
@@ -99,8 +99,8 @@ func TestExtractWindow_SubagentBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractWindow turn1: %v", err)
 	}
-	if r1.InputTokens != 110 { // 10 main + 100 subagent
-		t.Errorf("turn1 InputTokens = %d, want 110", r1.InputTokens)
+	if r1.InputTokens() != 110 { // 10 main + 100 subagent
+		t.Errorf("turn1 InputTokens = %d, want 110", r1.InputTokens())
 	}
 
 	// Turn 2 window [10,20): should include toolu_turn2 but NOT toolu_turn1
@@ -108,8 +108,8 @@ func TestExtractWindow_SubagentBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractWindow turn2: %v", err)
 	}
-	if r2.InputTokens != 220 { // 20 main + 200 subagent
-		t.Errorf("turn2 InputTokens = %d, want 220", r2.InputTokens)
+	if r2.InputTokens() != 220 { // 20 main + 200 subagent
+		t.Errorf("turn2 InputTokens = %d, want 220", r2.InputTokens())
 	}
 }
 
@@ -125,17 +125,17 @@ func TestExtractWindow_WindowResult_CacheCreate5m(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractWindow: %v", err)
 	}
-	if result.CacheCreate5m != 200 {
-		t.Errorf("CacheCreate5m = %d, want 200", result.CacheCreate5m)
+	if result.CacheCreate5m() != 200 {
+		t.Errorf("CacheCreate5m = %d, want 200", result.CacheCreate5m())
 	}
-	if result.CacheCreate1h != 300 {
-		t.Errorf("CacheCreate1h = %d, want 300", result.CacheCreate1h)
+	if result.CacheCreate1h() != 300 {
+		t.Errorf("CacheCreate1h = %d, want 300", result.CacheCreate1h())
 	}
-	if result.InputTokens != 100 {
-		t.Errorf("InputTokens = %d, want 100", result.InputTokens)
+	if result.InputTokens() != 100 {
+		t.Errorf("InputTokens = %d, want 100", result.InputTokens())
 	}
-	if result.Model != "claude-sonnet-4-6" {
-		t.Errorf("Model = %q, want claude-sonnet-4-6", result.Model)
+	if result.Model() != "claude-sonnet-4-6" {
+		t.Errorf("Model = %q, want claude-sonnet-4-6", result.Model())
 	}
 }
 
@@ -151,11 +151,11 @@ func TestExtractWindow_WindowResult_NoCacheCreation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractWindow: %v", err)
 	}
-	if result.CacheCreate5m != 0 {
-		t.Errorf("CacheCreate5m = %d, want 0", result.CacheCreate5m)
+	if result.CacheCreate5m() != 0 {
+		t.Errorf("CacheCreate5m = %d, want 0", result.CacheCreate5m())
 	}
-	if result.CacheCreate1h != 0 {
-		t.Errorf("CacheCreate1h = %d, want 0", result.CacheCreate1h)
+	if result.CacheCreate1h() != 0 {
+		t.Errorf("CacheCreate1h = %d, want 0", result.CacheCreate1h())
 	}
 }
 
@@ -192,20 +192,20 @@ func TestExtractWindow_Range(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractWindow: %v", err)
 	}
-	if result.Model != "claude-sonnet-4-6" {
-		t.Errorf("Model = %q, want claude-sonnet-4-6", result.Model)
+	if result.Model() != "claude-sonnet-4-6" {
+		t.Errorf("Model = %q, want claude-sonnet-4-6", result.Model())
 	}
-	if result.InputTokens != 100 {
-		t.Errorf("InputTokens = %d, want 100", result.InputTokens)
+	if result.InputTokens() != 100 {
+		t.Errorf("InputTokens = %d, want 100", result.InputTokens())
 	}
-	if result.OutputTokens != 50 {
-		t.Errorf("OutputTokens = %d, want 50", result.OutputTokens)
+	if result.OutputTokens() != 50 {
+		t.Errorf("OutputTokens = %d, want 50", result.OutputTokens())
 	}
-	if result.CacheReadTokens != 10 {
-		t.Errorf("CacheReadTokens = %d, want 10", result.CacheReadTokens)
+	if result.CacheReadTokens() != 10 {
+		t.Errorf("CacheReadTokens = %d, want 10", result.CacheReadTokens())
 	}
-	if result.CacheCreationTokens != 5 {
-		t.Errorf("CacheCreationTokens = %d, want 5", result.CacheCreationTokens)
+	if result.CacheCreationTokens() != 5 {
+		t.Errorf("CacheCreationTokens = %d, want 5", result.CacheCreationTokens())
 	}
 }
 
@@ -221,11 +221,11 @@ func TestExtractWindow_ToEOF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractWindow: %v", err)
 	}
-	if result.Model != "claude-haiku-4-5" {
-		t.Errorf("Model = %q, want claude-haiku-4-5", result.Model)
+	if result.Model() != "claude-haiku-4-5" {
+		t.Errorf("Model = %q, want claude-haiku-4-5", result.Model())
 	}
-	if result.InputTokens != 200 {
-		t.Errorf("InputTokens = %d, want 200", result.InputTokens)
+	if result.InputTokens() != 200 {
+		t.Errorf("InputTokens = %d, want 200", result.InputTokens())
 	}
 }
 
@@ -262,10 +262,87 @@ func TestExtractWindow_WithSubagents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExtractWindow: %v", err)
 	}
-	if result.InputTokens != 110 {
-		t.Errorf("InputTokens = %d, want 110 (10 main + 100 subagent)", result.InputTokens)
+	if result.InputTokens() != 110 {
+		t.Errorf("InputTokens = %d, want 110 (10 main + 100 subagent)", result.InputTokens())
 	}
-	if result.OutputTokens != 55 {
-		t.Errorf("OutputTokens = %d, want 55 (5 main + 50 subagent)", result.OutputTokens)
+	if result.OutputTokens() != 55 {
+		t.Errorf("OutputTokens = %d, want 55 (5 main + 50 subagent)", result.OutputTokens())
+	}
+}
+
+func TestExtractWindow_MultiModelSubagents(t *testing.T) {
+	dir := t.TempDir()
+	mainLines := []string{
+		`{"type":"user","isSidechain":false}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-3-5-sonnet","usage":{"input_tokens":10,"output_tokens":5},"content":[{"type":"tool_use","id":"toolu_sub1","name":"Agent"},{"type":"tool_use","id":"toolu_sub2","name":"Agent"},{"type":"tool_use","id":"toolu_sub3","name":"Agent"}]}}`,
+	}
+	path := filepath.Join(dir, "transcript.jsonl")
+	f, _ := os.Create(path)
+	for _, l := range mainLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	subDir := filepath.Join(dir, "transcript", "subagents")
+	os.MkdirAll(subDir, 0755)
+
+	// Subagent 1: claude-3-5-haiku
+	os.WriteFile(filepath.Join(subDir, "agent-1.meta.json"),
+		[]byte(`{"toolUseId":"toolu_sub1"}`), 0644)
+	os.WriteFile(filepath.Join(subDir, "agent-1.jsonl"),
+		[]byte(`{"type":"assistant","isSidechain":true,"message":{"model":"claude-3-5-haiku","usage":{"input_tokens":100,"output_tokens":50}}}`+"\n"), 0644)
+
+	// Subagent 2: claude-3-5-haiku
+	os.WriteFile(filepath.Join(subDir, "agent-2.meta.json"),
+		[]byte(`{"toolUseId":"toolu_sub2"}`), 0644)
+	os.WriteFile(filepath.Join(subDir, "agent-2.jsonl"),
+		[]byte(`{"type":"assistant","isSidechain":true,"message":{"model":"claude-3-5-haiku","usage":{"input_tokens":200,"output_tokens":80}}}`+"\n"), 0644)
+
+	// Subagent 3: gpt-4o
+	os.WriteFile(filepath.Join(subDir, "agent-3.meta.json"),
+		[]byte(`{"toolUseId":"toolu_sub3"}`), 0644)
+	os.WriteFile(filepath.Join(subDir, "agent-3.jsonl"),
+		[]byte(`{"type":"assistant","isSidechain":true,"message":{"model":"gpt-4o","usage":{"input_tokens":300,"output_tokens":150}}}`+"\n"), 0644)
+
+	result, err := transcript.ExtractWindow(path, 0, -1)
+	if err != nil {
+		t.Fatalf("ExtractWindow: %v", err)
+	}
+
+	// We expect 3 distinct usages:
+	// 1. main agent: claude-3-5-sonnet (is_subagent=false, in=10, out=5)
+	// 2. subagent: claude-3-5-haiku (is_subagent=true, in=300, out=130)
+	// 3. subagent: gpt-4o (is_subagent=true, in=300, out=150)
+	if len(result.Usages) != 3 {
+		t.Fatalf("expected 3 usages, got %d: %+v", len(result.Usages), result.Usages)
+	}
+
+	var mainSonnet, subHaiku, subGpt transcript.ModelUsage
+	for _, u := range result.Usages {
+		if !u.IsSubagent && u.Model == "claude-3-5-sonnet" {
+			mainSonnet = u
+		} else if u.IsSubagent && u.Model == "claude-3-5-haiku" {
+			subHaiku = u
+		} else if u.IsSubagent && u.Model == "gpt-4o" {
+			subGpt = u
+		}
+	}
+
+	if mainSonnet.Model == "" {
+		t.Error("missing main agent claude-3-5-sonnet usage")
+	} else if mainSonnet.InputTokens != 10 || mainSonnet.OutputTokens != 5 {
+		t.Errorf("expected main agent usage (10, 5), got (%d, %d)", mainSonnet.InputTokens, mainSonnet.OutputTokens)
+	}
+
+	if subHaiku.Model == "" {
+		t.Error("missing subagent claude-3-5-haiku usage")
+	} else if subHaiku.InputTokens != 300 || subHaiku.OutputTokens != 130 {
+		t.Errorf("expected subagent haiku usage (300, 130), got (%d, %d)", subHaiku.InputTokens, subHaiku.OutputTokens)
+	}
+
+	if subGpt.Model == "" {
+		t.Error("missing subagent gpt-4o usage")
+	} else if subGpt.InputTokens != 300 || subGpt.OutputTokens != 150 {
+		t.Errorf("expected subagent gpt-4o usage (300, 150), got (%d, %d)", subGpt.InputTokens, subGpt.OutputTokens)
 	}
 }
