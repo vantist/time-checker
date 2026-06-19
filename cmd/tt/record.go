@@ -251,10 +251,12 @@ func extractFromTranscript(path string) (tokensJSON, model string) {
 // marshalWindowResult converts a WindowResult to the JSON string format expected by RecordResponse.
 func marshalWindowResult(r transcript.WindowResult) string {
 	out, err := json.Marshal(map[string]int{
-		"input_tokens":          r.InputTokens,
-		"output_tokens":         r.OutputTokens,
-		"cache_read_tokens":     r.CacheReadTokens,
-		"cache_creation_tokens": r.CacheCreationTokens,
+		"input_tokens":              r.InputTokens,
+		"output_tokens":             r.OutputTokens,
+		"cache_read_tokens":         r.CacheReadTokens,
+		"cache_creation_tokens":     r.CacheCreationTokens,
+		"cache_creation_5m_tokens":  r.CacheCreate5m,
+		"cache_creation_1h_tokens":  r.CacheCreate1h,
 	})
 	if err != nil {
 		return ""

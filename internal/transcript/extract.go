@@ -131,7 +131,8 @@ func ExtractLastTurn(path string) (WindowResult, error) {
 		}
 	}
 
-	acc := sumWindow(all, lastUserIdx+1, len(all))
+	winFrom, winTo := lastUserIdx+1, len(all)
+	acc := sumWindow(all, winFrom, winTo)
 
 	if acc.InputTokens == 0 && acc.OutputTokens == 0 && lastUserIdx > 0 {
 		// /clear race: fallback to previous turn window.
@@ -142,10 +143,11 @@ func ExtractLastTurn(path string) (WindowResult, error) {
 				break
 			}
 		}
-		acc = sumWindow(all, prevUserIdx+1, lastUserIdx)
+		winFrom, winTo = prevUserIdx+1, lastUserIdx
+		acc = sumWindow(all, winFrom, winTo)
 	}
 
-	sub := extractSubagentTokens(path, all, lastUserIdx+1, len(all))
+	sub := extractSubagentTokens(path, all, winFrom, winTo)
 	acc.InputTokens += sub.InputTokens
 	acc.OutputTokens += sub.OutputTokens
 	acc.CacheReadInputTokens += sub.CacheReadInputTokens
@@ -259,6 +261,8 @@ func extractSubagentTokens(transcriptPath string, entries []entry, from, to int)
 		acc.OutputTokens += sub.OutputTokens
 		acc.CacheReadInputTokens += sub.CacheReadInputTokens
 		acc.CacheCreationInputTokens += sub.CacheCreationInputTokens
+		acc.CacheCreation.Ephemeral5m += sub.CacheCreation.Ephemeral5m
+		acc.CacheCreation.Ephemeral1h += sub.CacheCreation.Ephemeral1h
 	}
 	return acc
 }

@@ -13,6 +13,8 @@ type tokenPayload struct {
 	OutputTokens         int `json:"output_tokens"`
 	CacheReadTokens      int `json:"cache_read_tokens"`
 	CacheCreationTokens  int `json:"cache_creation_tokens"`
+	CacheCreate5m        int `json:"cache_creation_5m_tokens"`
+	CacheCreate1h        int `json:"cache_creation_1h_tokens"`
 }
 
 func RecordResponse(conn *sql.DB, sessionID, tokensJSON, model string) error {
@@ -48,20 +50,22 @@ func RecordResponse(conn *sql.DB, sessionID, tokensJSON, model string) error {
 
 	var cost *float64
 	if tok.InputTokens > 0 || tok.OutputTokens > 0 {
-		cost = pricing.Calculate(sessionModel, tok.InputTokens, tok.OutputTokens, tok.CacheReadTokens, tok.CacheCreationTokens, 0, 0)
+		cost = pricing.Calculate(sessionModel, tok.InputTokens, tok.OutputTokens, tok.CacheReadTokens, tok.CacheCreationTokens, tok.CacheCreate5m, tok.CacheCreate1h)
 	}
 
 	// Update the latest turn for this session (highest rowid).
 	// subagent_tokens_settled=0 signals reconcile to re-compute after process exits.
 	_, err := conn.Exec(`
 		UPDATE turns SET
-			response_at            = ?,
-			input_tokens           = CASE WHEN ? > 0 THEN ? ELSE input_tokens END,
-			output_tokens          = CASE WHEN ? > 0 THEN ? ELSE output_tokens END,
-			cache_read_tokens      = ?,
-			cache_creation_tokens  = ?,
-			estimated_cost_usd     = ?,
-			subagent_tokens_settled = 0
+			response_at                = ?,
+			input_tokens               = CASE WHEN ? > 0 THEN ? ELSE input_tokens END,
+			output_tokens              = CASE WHEN ? > 0 THEN ? ELSE output_tokens END,
+			cache_read_tokens          = ?,
+			cache_creation_tokens      = ?,
+			cache_creation_5m_tokens   = ?,
+			cache_creation_1h_tokens   = ?,
+			estimated_cost_usd         = ?,
+			subagent_tokens_settled    = 0
 		WHERE id = (
 			SELECT id FROM turns WHERE session_id=? ORDER BY id DESC LIMIT 1
 		)`,
@@ -70,6 +74,8 @@ func RecordResponse(conn *sql.DB, sessionID, tokensJSON, model string) error {
 		tok.OutputTokens, tok.OutputTokens,
 		tok.CacheReadTokens,
 		tok.CacheCreationTokens,
+		tok.CacheCreate5m,
+		tok.CacheCreate1h,
 		cost,
 		stableID,
 	)
