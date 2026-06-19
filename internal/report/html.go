@@ -60,6 +60,14 @@ tr:hover td { background: #1a2234; }
   </table>
 </div>
 
+<div class="section">
+  <h2>By Agent</h2>
+  <table>
+    <thead><tr><th>Agent</th><th>Sessions</th><th>Agent time</th><th>User time</th><th>Tokens</th><th>Cost</th></tr></thead>
+    <tbody id="tbl-agent"></tbody>
+  </table>
+</div>
+
 <div class="section" id="section-workitem">
   <h2>By Work Item</h2>
   <table>
@@ -71,7 +79,7 @@ tr:hover td { background: #1a2234; }
 <div class="section">
   <h2>Sessions</h2>
   <table>
-    <thead><tr><th>Time</th><th>Project</th><th>Branch</th><th>Model</th><th>Turns</th><th>Agent time</th><th>User time</th><th>Work item</th><th>Cost</th></tr></thead>
+    <thead><tr><th>Time</th><th>Project</th><th>Branch</th><th>Agent</th><th>Model</th><th>Turns</th><th>Agent time</th><th>User time</th><th>Work item</th><th>Cost</th></tr></thead>
     <tbody id="tbl-sessions"></tbody>
   </table>
 </div>
@@ -120,6 +128,14 @@ function render(d) {
     projBody.appendChild(tr);
   });
 
+  const agentBody = document.getElementById('tbl-agent');
+  agentBody.innerHTML = '';
+  (d.by_agent || []).forEach(a => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + esc(a.agent) + '</td><td>' + a.sessions + '</td><td>' + esc(a.agent_time) + '</td><td>' + esc(a.user_time) + '</td><td>' + esc(a.tokens) + '</td><td>' + fmtCost(a.cost) + '</td>';
+    agentBody.appendChild(tr);
+  });
+
   const groups = d.groups || [];
   const wiSection = document.getElementById('section-workitem');
   wiSection.style.display = groups.length <= 1 ? 'none' : '';
@@ -136,7 +152,7 @@ function render(d) {
   (d.sessions || []).forEach(s => {
     const tr = document.createElement('tr');
     const t = new Date(s.started_at || 0);
-    tr.innerHTML = '<td>' + t.toLocaleString() + '</td><td>' + esc(s.project) + '</td><td>' + esc(s.branch) + '</td><td>' + esc(s.model) + '</td><td>' + (s.turns || 0) + '</td><td>' + fmtTime(s.agent_time_sec || 0) + '</td><td>' + fmtTime(s.user_time_sec || 0) + '</td><td>' + esc(s.work_item) + '</td><td>' + fmtCost(s.cost_usd) + '</td>';
+    tr.innerHTML = '<td>' + t.toLocaleString() + '</td><td>' + esc(s.project) + '</td><td>' + esc(s.branch) + '</td><td>' + esc(s.tool) + '</td><td>' + esc(s.model) + '</td><td>' + (s.turns || 0) + '</td><td>' + fmtTime(s.agent_time_sec || 0) + '</td><td>' + fmtTime(s.user_time_sec || 0) + '</td><td>' + esc(s.work_item) + '</td><td>' + fmtCost(s.cost_usd) + '</td>';
     sessBody.appendChild(tr);
   });
 

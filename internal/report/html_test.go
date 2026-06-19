@@ -28,6 +28,16 @@ func TestHandleDashboard(t *testing.T) {
 	if !strings.Contains(body, "<html") {
 		t.Errorf("body missing <html>:\n%s", body[:min(len(body), 200)])
 	}
+	for _, want := range []string{
+		"<h2>By Agent</h2>",
+		"id=\"tbl-agent\"",
+		"esc(s.tool)",
+		"<th>Agent</th>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("dashboard HTML missing element: %q", want)
+		}
+	}
 }
 
 // Task 10.2: HandleAPIReport returns 200 application/json with by_project and daily
@@ -51,7 +61,7 @@ func TestHandleAPIReport(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&m); err != nil {
 		t.Fatalf("body not valid JSON: %v", err)
 	}
-	for _, key := range []string{"by_project", "daily"} {
+	for _, key := range []string{"by_project", "by_agent", "daily"} {
 		if _, ok := m[key]; !ok {
 			t.Errorf("JSON missing key %q", key)
 		}
