@@ -43,22 +43,35 @@ type AgentSummary struct {
 	Cost      float64 `json:"cost"`
 }
 
+type ModelUsageSummary struct {
+	Model               string   `json:"model"`
+	IsSubagent          bool     `json:"is_subagent"`
+	InputTokens         int64    `json:"input_tokens"`
+	OutputTokens        int64    `json:"output_tokens"`
+	CacheReadTokens     int64    `json:"cache_read_tokens"`
+	CacheCreationTokens int64    `json:"cache_creation_tokens"`
+	CacheCreation5m     int64    `json:"cache_creation_5m_tokens"`
+	CacheCreation1h     int64    `json:"cache_creation_1h_tokens"`
+	EstimatedCostUSD    float64  `json:"estimated_cost_usd"`
+}
+
 type Result struct {
-	Empty                bool             `json:"-"`
-	SessionsCount        int              `json:"sessions_count"`
-	AgentTimeSec         int64            `json:"agent_time_sec"`
-	UserActiveTimeSec    int64            `json:"user_active_time_sec"`
-	InputTokens          int64            `json:"input_tokens"`
-	OutputTokens         int64            `json:"output_tokens"`
-	CacheReadTokens      int64            `json:"cache_read_tokens"`
-	CacheCreationTokens  int64            `json:"cache_creation_tokens"`
-	EstimatedCostUSD     *float64         `json:"estimated_cost_usd"`
-	Groups               []GroupResult    `json:"groups"`
-	ByProject            []ProjectSummary `json:"by_project"`
-	ByAgent              []AgentSummary   `json:"by_agent"`
-	Daily                []DailyStat      `json:"daily"`
-	Sessions             []SessionRow     `json:"sessions"`
-	ByWorkItem           bool             `json:"-"`
+	Empty                bool                 `json:"-"`
+	SessionsCount        int                  `json:"sessions_count"`
+	AgentTimeSec         int64                `json:"agent_time_sec"`
+	UserActiveTimeSec    int64                `json:"user_active_time_sec"`
+	InputTokens          int64                `json:"input_tokens"`
+	OutputTokens         int64                `json:"output_tokens"`
+	CacheReadTokens      int64                `json:"cache_read_tokens"`
+	CacheCreationTokens  int64                `json:"cache_creation_tokens"`
+	EstimatedCostUSD     *float64             `json:"estimated_cost_usd"`
+	Groups               []GroupResult        `json:"groups"`
+	ByProject            []ProjectSummary     `json:"by_project"`
+	ByAgent              []AgentSummary       `json:"by_agent"`
+	ModelUsages          []ModelUsageSummary  `json:"model_usages"`
+	Daily                []DailyStat          `json:"daily"`
+	Sessions             []SessionRow         `json:"sessions"`
+	ByWorkItem           bool                 `json:"-"`
 }
 
 type ProjectSummary struct {
@@ -365,6 +378,45 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		return res.Daily[i].Date < res.Daily[j].Date
 	})
 
+	// Query model usages grouped by model and role
+	muRows, err := conn.Query(`
+		SELECT 
+			u.model,
+			u.is_subagent,
+			COALESCE(SUM(u.input_tokens), 0),
+			COALESCE(SUM(u.output_tokens), 0),
+			COALESCE(SUM(u.cache_read_tokens), 0),
+			COALESCE(SUM(u.cache_creation_tokens), 0),
+			COALESCE(SUM(u.cache_creation_5m_tokens), 0),
+			COALESCE(SUM(u.cache_creation_1h_tokens), 0),
+			COALESCE(SUM(u.estimated_cost_usd), 0.0)
+		FROM turn_model_usages u
+		JOIN turns t ON t.id = u.turn_id
+		JOIN sessions s ON s.id = t.session_id
+		WHERE t.prompt_at >= ?`+projectFilter+`
+		GROUP BY u.model, u.is_subagent
+		ORDER BY u.is_subagent ASC, SUM(u.estimated_cost_usd) DESC, u.model ASC`,
+		args...,
+	)
+	if err != nil {
+		return Result{}, err
+	}
+	defer muRows.Close()
+
+	for muRows.Next() {
+		var mu ModelUsageSummary
+		if err := muRows.Scan(
+			&mu.Model, &mu.IsSubagent,
+			&mu.InputTokens, &mu.OutputTokens,
+			&mu.CacheReadTokens, &mu.CacheCreationTokens,
+			&mu.CacheCreation5m, &mu.CacheCreation1h,
+			&mu.EstimatedCostUSD,
+		); err != nil {
+			return Result{}, err
+		}
+		res.ModelUsages = append(res.ModelUsages, mu)
+	}
+
 	return res, nil
 }
 
@@ -491,6 +543,26 @@ func FormatText(r Result) string {
 	// Cost block
 	fmt.Fprintf(&b, "─── Cost ───\n")
 	fmt.Fprintf(&b, "  Est. cost:  %s\n\n", cost)
+
+	// By Model & Role block
+	if len(r.ModelUsages) > 0 {
+		fmt.Fprintf(&b, "─── By Model & Role ───\n")
+		fmt.Fprintf(&b, "%-25s  %-10s  %12s  %12s  %10s\n", "Model", "Role", "Input Tokens", "Output Tokens", "Cost")
+		for _, mu := range r.ModelUsages {
+			role := "Main"
+			if mu.IsSubagent {
+				role = "Subagent"
+			}
+			fmt.Fprintf(&b, "%-25s  %-10s  %12s  %12s  %10s\n",
+				mu.Model,
+				role,
+				formatInt(mu.InputTokens),
+				formatInt(mu.OutputTokens),
+				fmt.Sprintf("$%.4f", mu.EstimatedCostUSD),
+			)
+		}
+		fmt.Fprintf(&b, "\n")
+	}
 
 	// Daily breakdown table
 	if len(r.Daily) > 0 {

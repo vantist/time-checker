@@ -1037,6 +1037,87 @@ func TestFormatTextAgentAttribution(t *testing.T) {
 	}
 }
 
+func TestReportModelUsages(t *testing.T) {
+	conn := openTestDB(t)
+	now := time.Now().UTC()
+
+	insertSession(t, conn, "ms1", "/proj1", "main", "")
+
+	// Create turn
+	_, err := conn.Exec(
+		`INSERT INTO turns (id, session_id, prompt_at, response_at, estimated_cost_usd) VALUES (101, 'ms1', ?, ?, 0.006)`,
+		now.Add(-time.Hour).Format(time.RFC3339),
+		now.Add(-time.Hour + 2*time.Minute).Format(time.RFC3339),
+	)
+	if err != nil {
+		t.Fatalf("failed to insert turn: %v", err)
+	}
+
+	// Insert into turn_model_usages (main agent and subagent)
+	_, err = conn.Exec(`
+		INSERT INTO turn_model_usages (
+			turn_id, model, is_subagent, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, estimated_cost_usd
+		) VALUES (101, 'claude-sonnet-4-6', 0, 1000, 200, 500, 0, 0.00515)
+	`)
+	if err != nil {
+		t.Fatalf("failed to insert model usage: %v", err)
+	}
+	_, err = conn.Exec(`
+		INSERT INTO turn_model_usages (
+			turn_id, model, is_subagent, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, estimated_cost_usd
+		) VALUES (101, 'claude-haiku-4-5', 1, 100, 50, 0, 0, 0.00085)
+	`)
+	if err != nil {
+		t.Fatalf("failed to insert model usage: %v", err)
+	}
+
+	result, err := report.Query(conn, report.Options{Since: now.Add(-2 * time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+
+	if len(result.ModelUsages) != 2 {
+		t.Fatalf("expected 2 model usages, got %d", len(result.ModelUsages))
+	}
+
+	var mainU, subU report.ModelUsageSummary
+	for _, u := range result.ModelUsages {
+		if !u.IsSubagent {
+			mainU = u
+		} else {
+			subU = u
+		}
+	}
+
+	if mainU.Model != "claude-sonnet-4-6" || mainU.InputTokens != 1000 || mainU.OutputTokens != 200 {
+		t.Errorf("expected main model claude-sonnet-4-6 (1000, 200), got %+v", mainU)
+	}
+	if subU.Model != "claude-haiku-4-5" || subU.InputTokens != 100 || subU.OutputTokens != 50 {
+		t.Errorf("expected sub model claude-haiku-4-5 (100, 50), got %+v", subU)
+	}
+
+	// Verify FormatText output contains the "By Model & Role" block
+	text := report.FormatText(result)
+	for _, want := range []string{
+		"─── By Model & Role ───",
+		"claude-sonnet-4-6", "Main", "1,000", "200", "$0.0052",
+		"claude-haiku-4-5", "Subagent", "100", "50", "$0.0008",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("FormatText output missing %q, got:\n%s", want, text)
+		}
+	}
+
+	// Verify FormatJSON output contains model_usages
+	jsonStr := report.FormatJSON(result)
+	if !strings.Contains(jsonStr, `"model_usages"`) {
+		t.Errorf("JSON output missing model_usages key, got: %s", jsonStr)
+	}
+	if !strings.Contains(jsonStr, `"claude-sonnet-4-6"`) || !strings.Contains(jsonStr, `"claude-haiku-4-5"`) {
+		t.Errorf("JSON output missing models, got: %s", jsonStr)
+	}
+}
+
 
 
 
