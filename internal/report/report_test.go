@@ -34,11 +34,11 @@ func insertSession(t *testing.T, conn *sql.DB, id, project, branch, workItem str
 	}
 }
 
-func insertSessionFull(t *testing.T, conn *sql.DB, id, project, tool, model, branch, workItem string) {
+func insertSessionFull(t *testing.T, conn *sql.DB, id, project, tool, model, branch, workItem string, startedAt time.Time) {
 	t.Helper()
 	_, err := conn.Exec(
 		`INSERT OR IGNORE INTO sessions (id, project, tool, model, branch, work_item, started_at) VALUES (?,?,?,?,?,?,?)`,
-		id, project, tool, model, branch, workItem, time.Now().UTC().Format(time.RFC3339),
+		id, project, tool, model, branch, workItem, startedAt.UTC().Format(time.RFC3339),
 	)
 	if err != nil {
 		t.Fatalf("insertSessionFull: %v", err)
@@ -889,7 +889,7 @@ func TestQueryToolField(t *testing.T) {
 	conn := openTestDB(t)
 	now := time.Now().UTC()
 
-	insertSessionFull(t, conn, "s1", "/proj", "claude-code", "gemini-2.5-flash", "main", "feat-1")
+	insertSessionFull(t, conn, "s1", "/proj", "claude-code", "gemini-2.5-flash", "main", "feat-1", now)
 	insertTurn(t, conn, "s1", now.Add(-time.Hour), ptr(now.Add(-time.Hour+time.Minute)), nil)
 
 	res, err := report.Query(conn, report.Options{Since: now.Add(-2 * time.Hour)})
@@ -905,5 +905,80 @@ func TestQueryToolField(t *testing.T) {
 		t.Errorf("expected SessionRow.Tool to be %q, got %q", "Claude Code", res.Sessions[0].Tool)
 	}
 }
+
+func TestQueryByAgentAggregation(t *testing.T) {
+	conn := openTestDB(t)
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// Session 1: Claude Code, overlapping with Session 2
+	insertSessionFull(t, conn, "s1", "/proj", "claude-code", "gemini-2.5-flash", "main", "", now.Add(-40*time.Minute))
+	insertTurnFull(t, conn, "s1", now.Add(-30*time.Minute), ptr(now.Add(-20*time.Minute)), 100, 50, 10, 5, ptr(0.015))
+
+	// Session 2: Copilot CLI, overlapping with Session 1
+	insertSessionFull(t, conn, "s2", "/proj", "copilot-cli", "gemini-2.5-flash", "main", "", now.Add(-35*time.Minute))
+	insertTurnFull(t, conn, "s2", now.Add(-25*time.Minute), ptr(now.Add(-15*time.Minute)), 200, 80, 20, 10, ptr(0.025))
+
+	res, err := report.Query(conn, report.Options{Since: now.Add(-1 * time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+
+	if len(res.ByAgent) != 2 {
+		t.Fatalf("expected 2 agents in ByAgent, got %d", len(res.ByAgent))
+	}
+
+	var claude, copilot *report.AgentSummary
+	for i := range res.ByAgent {
+		if res.ByAgent[i].Agent == "Claude Code" {
+			claude = &res.ByAgent[i]
+		} else if res.ByAgent[i].Agent == "Copilot CLI" {
+			copilot = &res.ByAgent[i]
+		}
+	}
+
+	if claude == nil {
+		t.Fatal("Claude Code not found in ByAgent")
+	}
+	if copilot == nil {
+		t.Fatal("Copilot CLI not found in ByAgent")
+	}
+
+	if claude.Sessions != 1 {
+		t.Errorf("Claude sessions = %d, want 1", claude.Sessions)
+	}
+	if claude.AgentTime != "0h 10m" {
+		t.Errorf("Claude AgentTime = %q, want %q", claude.AgentTime, "0h 10m")
+	}
+	if claude.UserTime != "0h 10m" {
+		t.Errorf("Claude UserTime = %q, want %q", claude.UserTime, "0h 10m")
+	}
+	if claude.Tokens != "100 / 50" {
+		t.Errorf("Claude Tokens = %q, want %q", claude.Tokens, "100 / 50")
+	}
+	if claude.Cost != 0.015 {
+		t.Errorf("Claude Cost = %f, want %f", claude.Cost, 0.015)
+	}
+
+	if copilot.Sessions != 1 {
+		t.Errorf("Copilot sessions = %d, want 1", copilot.Sessions)
+	}
+	if copilot.AgentTime != "0h 10m" {
+		t.Errorf("Copilot AgentTime = %q, want %q", copilot.AgentTime, "0h 10m")
+	}
+	if copilot.UserTime != "0h 10m" {
+		t.Errorf("Copilot UserTime = %q, want %q", copilot.UserTime, "0h 10m")
+	}
+	if copilot.Tokens != "200 / 80" {
+		t.Errorf("Copilot Tokens = %q, want %q", copilot.Tokens, "200 / 80")
+	}
+	if copilot.Cost != 0.025 {
+		t.Errorf("Copilot Cost = %f, want %f", copilot.Cost, 0.025)
+	}
+
+	if res.UserActiveTimeSec != 900 {
+		t.Errorf("global UserActiveTimeSec = %d, want 900", res.UserActiveTimeSec)
+	}
+}
+
 
 

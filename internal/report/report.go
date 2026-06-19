@@ -187,6 +187,15 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		outputTokens int64
 	}
 	projMap := map[string]*projState{}
+	// agent → {sessions, agent turns, cost, inputTokens, outputTokens}
+	type agentState struct {
+		sessions     map[string]struct{}
+		turns        []aggregator.Turn
+		cost         *float64
+		inputTokens  int64
+		outputTokens int64
+	}
+	agentMap := map[string]*agentState{}
 	// date → DailyStat
 	dailyMap := map[string]*DailyStat{}
 	sessDateSeen := map[string]struct{}{} // "date:sessID"
@@ -222,6 +231,18 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		ps.inputTokens += r.inputTok
 		ps.outputTokens += r.outputTok
 		addCost(&ps.cost, r.cost)
+
+		// by-agent accumulation
+		as := agentMap[r.tool]
+		if as == nil {
+			as = &agentState{sessions: map[string]struct{}{}}
+			agentMap[r.tool] = as
+		}
+		as.sessions[r.sessionID] = struct{}{}
+		as.turns = append(as.turns, aggregator.Turn{PromptAt: r.promptAt, ResponseAt: r.responseAt})
+		as.inputTokens += r.inputTok
+		as.outputTokens += r.outputTok
+		addCost(&as.cost, r.cost)
 
 		// daily accumulation
 		date := r.promptAt.UTC().Format("2006-01-02")
@@ -284,6 +305,34 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 	}
 	sort.Slice(res.ByProject, func(i, j int) bool {
 		return res.ByProject[i].SessionsCount > res.ByProject[j].SessionsCount
+	})
+
+	// build ByAgent sorted by sessions desc, then agent name asc
+	for agent, as := range agentMap {
+		agentSec := int64(aggregator.AgentTime(as.turns).Seconds())
+		var agentIntervals []aggregator.Interval
+		for sid := range as.sessions {
+			agentIntervals = append(agentIntervals, sessUserIntervals[sid]...)
+		}
+		userSec := int64(aggregator.MergeAndSum(agentIntervals).Seconds())
+		costVal := 0.0
+		if as.cost != nil {
+			costVal = *as.cost
+		}
+		res.ByAgent = append(res.ByAgent, AgentSummary{
+			Agent:     agent,
+			Sessions:  len(as.sessions),
+			AgentTime: formatTime(agentSec),
+			UserTime:  formatTime(userSec),
+			Tokens:    fmt.Sprintf("%s / %s", formatInt(as.inputTokens), formatInt(as.outputTokens)),
+			Cost:      costVal,
+		})
+	}
+	sort.Slice(res.ByAgent, func(i, j int) bool {
+		if res.ByAgent[i].Sessions == res.ByAgent[j].Sessions {
+			return res.ByAgent[i].Agent < res.ByAgent[j].Agent
+		}
+		return res.ByAgent[i].Sessions > res.ByAgent[j].Sessions
 	})
 
 	// build Sessions sorted by started_at desc
