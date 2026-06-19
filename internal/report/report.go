@@ -523,6 +523,23 @@ func FormatText(r Result) string {
 		fmt.Fprintf(&b, "\n")
 	}
 
+	// By Agent table
+	if len(r.ByAgent) > 0 {
+		fmt.Fprintf(&b, "─── By Agent ───\n")
+		fmt.Fprintf(&b, "%-15s  %8s  %10s  %11s  %15s  %8s\n", "Agent", "Sessions", "Agent Time", "User Active", "Tokens (I/O)", "Cost")
+		for _, a := range r.ByAgent {
+			fmt.Fprintf(&b, "%-15s  %8d  %10s  %11s  %15s  $%.4f\n",
+				a.Agent,
+				a.Sessions,
+				a.AgentTime,
+				a.UserTime,
+				a.Tokens,
+				a.Cost,
+			)
+		}
+		fmt.Fprintf(&b, "\n")
+	}
+
 	// By Work Item table
 	if len(r.Groups) > 0 && (len(r.Groups) > 1 || r.ByWorkItem) {
 		fmt.Fprintf(&b, "─── By Work Item ───\n")
@@ -547,8 +564,8 @@ func FormatText(r Result) string {
 	// Sessions log table
 	if len(r.Sessions) > 0 {
 		fmt.Fprintf(&b, "─── Sessions ───\n")
-		fmt.Fprintf(&b, "%-19s  %-15s  %-12s  %-20s  %5s  %10s  %9s  %-15s  %8s\n",
-			"Start Time", "Project", "Branch", "Model", "Turns", "Agent Time", "User Time", "Work Item", "Cost")
+		fmt.Fprintf(&b, "%-19s  %-15s  %-12s  %-12s  %-20s  %5s  %10s  %9s  %-15s  %8s\n",
+			"Start Time", "Project", "Branch", "Agent", "Model", "Turns", "Agent Time", "User Time", "Work Item", "Cost")
 		for _, s := range r.Sessions {
 			scost := "N/A"
 			if s.CostUSD != nil {
@@ -560,10 +577,11 @@ func FormatText(r Result) string {
 			} else {
 				startTimeStr = s.StartedAt
 			}
-			fmt.Fprintf(&b, "%-19s  %-15s  %-12s  %-20s  %5d  %10s  %9s  %-15s  %8s\n",
+			fmt.Fprintf(&b, "%-19s  %-15s  %-12s  %-12s  %-20s  %5d  %10s  %9s  %-15s  %8s\n",
 				startTimeStr,
 				filepath.Base(s.Project),
 				s.Branch,
+				s.Tool,
 				s.Model,
 				s.Turns,
 				formatTime(s.AgentTimeSec),

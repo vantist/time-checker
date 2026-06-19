@@ -980,5 +980,63 @@ func TestQueryByAgentAggregation(t *testing.T) {
 	}
 }
 
+func TestFormatTextAgentAttribution(t *testing.T) {
+	costVal := 0.04
+	r := report.Result{
+		SessionsCount:     1,
+		AgentTimeSec:      600,
+		UserActiveTimeSec: 300,
+		InputTokens:       1000,
+		OutputTokens:      500,
+		EstimatedCostUSD:  &costVal,
+		ByAgent: []report.AgentSummary{
+			{
+				Agent:     "Claude Code",
+				Sessions:  1,
+				AgentTime: "0h 10m",
+				UserTime:  "0h 5m",
+				Tokens:    "1,000 / 500",
+				Cost:      0.04,
+			},
+		},
+		Sessions: []report.SessionRow{
+			{
+				ID:           "s1",
+				Project:      "/path/to/myproj",
+				Branch:       "main",
+				Tool:         "Claude Code",
+				Model:        "gemini-2.5-flash",
+				Turns:        3,
+				AgentTimeSec: 600,
+				UserTimeSec:  300,
+				CostUSD:      &costVal,
+				StartedAt:    "2026-06-19T10:00:00Z",
+			},
+		},
+	}
+
+	text := report.FormatText(r)
+
+	// Verify By Agent block header and row
+	for _, want := range []string{
+		"─── By Agent ───",
+		"Agent", "Sessions", "Agent Time", "User Active", "Tokens (I/O)", "Cost",
+		"Claude Code", "0h 10m", "0h 5m", "1,000 / 500", "$0.0400",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("FormatText ByAgent output missing %q, got:\n%s", want, text)
+		}
+	}
+
+	// Verify Sessions table has Agent column header and value
+	if !strings.Contains(text, "Agent") {
+		t.Errorf("FormatText Sessions output missing 'Agent' column header")
+	}
+	if !strings.Contains(text, "Claude Code") {
+		t.Errorf("FormatText Sessions output missing 'Claude Code' value")
+	}
+}
+
+
 
 
