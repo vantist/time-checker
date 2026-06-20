@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -645,3 +646,90 @@ func TestReconcile_SessionModelBackfill(t *testing.T) {
 		}
 	})
 }
+
+func TestRepairSessions(t *testing.T) {
+	db := newTestDB(t)
+	tempDir := t.TempDir()
+
+	// Create mock home directory structure
+	homeDir := filepath.Join(tempDir, "home")
+	if err := os.MkdirAll(homeDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("HOME", homeDir)
+
+	// Create mock project
+	projectRoot := filepath.Join(homeDir, "workspace", "my-project")
+	if err := os.MkdirAll(filepath.Join(projectRoot, "subdir"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectRoot, ".git"), 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create settings.json under homeDir for antigravity-cli model fallback
+	cliConfigDir := filepath.Join(homeDir, ".gemini", "antigravity-cli")
+	if err := os.MkdirAll(cliConfigDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	settingsPath := filepath.Join(cliConfigDir, "settings.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"model": "Gemini 3.5 Flash (Medium)"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert session with empty project and model
+	sessionID := "sess-repair-1"
+	_, err := db.Exec(`
+		INSERT INTO sessions (id, started_at, process_pid, process_start, tool, project, model)
+		VALUES (?, ?, ?, ?, ?, '', '')`,
+		sessionID, time.Now().UTC().Format(time.RFC3339), 0, 0, "antigravity",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write transcript containing an absolute path within project and an excluded path
+	transcriptPath := filepath.Join(tempDir, "transcript.jsonl")
+	excludedPath := filepath.Join(homeDir, ".gemini", "secret.json")
+	targetFilePath := filepath.Join(projectRoot, "subdir", "main.go")
+
+	transcriptLines := []string{
+		fmt.Sprintf(`{"type":"user","command":"cat %s"}`, excludedPath),
+		fmt.Sprintf(`{"type":"user","command":"go run %s"}`, targetFilePath),
+		`{"type":"assistant","message":{"model":"unknown"}}`,
+	}
+
+	f, err := os.Create(transcriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range transcriptLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	// Insert a turn with the transcript path
+	insertTurn(t, db, sessionID, transcriptPath, 0, time.Now().Add(-10*time.Second))
+
+	// Execute repairSessions (which we will define in reconcile.go)
+	repairSessions(db)
+
+	// Query session to verify fields
+	var project, model string
+	err = db.QueryRow("SELECT project, model FROM sessions WHERE id=?", sessionID).Scan(&project, &model)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The project should be resolved to the projectRoot containing .git
+	if filepath.Clean(project) != filepath.Clean(projectRoot) {
+		t.Errorf("expected project to be %q, got %q", projectRoot, project)
+	}
+
+	// The model should be resolved from settings.json and normalized to gemini-3.5-flash
+	if model != "gemini-3.5-flash" {
+		t.Errorf("expected model to be gemini-3.5-flash, got %q", model)
+	}
+}
+

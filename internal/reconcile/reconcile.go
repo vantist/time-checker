@@ -1,10 +1,13 @@
 package reconcile
 
 import (
+	"bufio"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -277,3 +280,309 @@ func reconcileTurn(conn *sql.DB, dt danglingTurn) error {
 
 	return tx.Commit()
 }
+
+func repairSessions(db *sql.DB) {
+	rows, err := db.Query(`
+		SELECT id, tool, model, project FROM sessions
+		WHERE project IS NULL OR project = '' OR model IS NULL OR model = ''
+	`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	type sessInfo struct {
+		id      string
+		tool    string
+		model   string
+		project string
+	}
+	var sessList []sessInfo
+	for rows.Next() {
+		var s sessInfo
+		var toolOpt, modelOpt, projectOpt sql.NullString
+		if err := rows.Scan(&s.id, &toolOpt, &modelOpt, &projectOpt); err != nil {
+			continue
+		}
+		if toolOpt.Valid {
+			s.tool = toolOpt.String
+		}
+		if modelOpt.Valid {
+			s.model = modelOpt.String
+		}
+		if projectOpt.Valid {
+			s.project = projectOpt.String
+		}
+		sessList = append(sessList, s)
+	}
+	rows.Close()
+
+	if len(sessList) == 0 {
+		return
+	}
+
+	type updateInfo struct {
+		id      string
+		project string
+		model   string
+	}
+	var updates []updateInfo
+
+	for _, s := range sessList {
+		pathToRead, found := findExistingTranscriptPath(db, s.id)
+		if !found {
+			continue
+		}
+
+		newProject := s.project
+		newModel := s.model
+
+		// Resolve project path if empty
+		if s.project == "" {
+			homeDir, err := os.UserHomeDir()
+			if err == nil {
+				if f, err := os.Open(pathToRead); err == nil {
+					sc := bufio.NewScanner(f)
+					sc.Buffer(make([]byte, 64*1024), 1024*1024)
+
+					var foundProj string
+					for sc.Scan() {
+						line := sc.Text()
+						paths := extractPathsFromLine(line, homeDir)
+						for _, p := range paths {
+							if isPathExcluded(p) {
+								continue
+							}
+							if root, ok := findProjectRoot(p); ok {
+								foundProj = root
+								break
+							}
+						}
+						if foundProj != "" {
+							break
+						}
+					}
+					f.Close()
+
+					if foundProj != "" {
+						newProject = foundProj
+					} else {
+						if wd, err := os.Getwd(); err == nil {
+							newProject = wd
+						}
+					}
+				}
+			}
+		}
+
+		// Resolve model if empty
+		if s.model == "" {
+			newModel = resolveModel(pathToRead, s.tool)
+		}
+
+		if newProject != s.project || newModel != s.model {
+			updates = append(updates, updateInfo{
+				id:      s.id,
+				project: newProject,
+				model:   newModel,
+			})
+		}
+	}
+
+	if len(updates) == 0 {
+		return
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return
+	}
+	defer tx.Rollback()
+
+	for _, up := range updates {
+		_, err = tx.Exec(`
+			UPDATE sessions
+			SET project = ?, model = ?
+			WHERE id = ?
+		`, up.project, up.model, up.id)
+		if err != nil {
+			return
+		}
+	}
+
+	_ = tx.Commit()
+}
+
+func findExistingTranscriptPath(db *sql.DB, sessionID string) (string, bool) {
+	rows, err := db.Query(`
+		SELECT transcript_path FROM turns
+		WHERE session_id = ? AND transcript_path IS NOT NULL AND transcript_path != ''
+		ORDER BY id ASC
+	`, sessionID)
+	if err != nil {
+		return "", false
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var rawPath string
+		if err := rows.Scan(&rawPath); err != nil {
+			continue
+		}
+
+		resolvedPath := expandHomePath(rawPath)
+
+		fullPath := strings.Replace(resolvedPath, "transcript.jsonl", "transcript_full.jsonl", 1)
+		if _, err := os.Stat(fullPath); err == nil {
+			return fullPath, true
+		}
+		if _, err := os.Stat(resolvedPath); err == nil {
+			return resolvedPath, true
+		}
+	}
+	return "", false
+}
+
+
+
+func expandHomePath(path string) string {
+	if len(path) >= 2 && path[:2] == "~/" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
+}
+
+func extractPathsFromLine(line string, homeDir string) []string {
+	var paths []string
+	idx := 0
+	for {
+		i := strings.Index(line[idx:], homeDir)
+		if i == -1 {
+			break
+		}
+		start := idx + i
+		end := start + len(homeDir)
+		for end < len(line) {
+			r := line[end]
+			if r == ' ' || r == '"' || r == '\'' || r == '`' || r == '\\' || r == ',' || r == '}' || r == ']' || r == '\n' || r == '\r' || r == '\t' {
+				break
+			}
+			end++
+		}
+		path := line[start:end]
+		paths = append(paths, path)
+		idx = end
+	}
+	return paths
+}
+
+func isPathExcluded(path string) bool {
+	excludes := []string{
+		".gemini",
+		".claude",
+		".copilot",
+		"Library",
+		"Downloads",
+		"Desktop",
+		"Applications",
+	}
+	for _, excl := range excludes {
+		if strings.Contains(path, excl) {
+			return true
+		}
+	}
+	return false
+}
+
+func findProjectRoot(path string) (string, bool) {
+	dir := filepath.Clean(path)
+	info, err := os.Stat(dir)
+	if err == nil && !info.IsDir() {
+		dir = filepath.Dir(dir)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir, true
+		}
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir, true
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return "", false
+}
+
+func resolveModel(path string, tool string) string {
+	if tool == "antigravity" {
+		res, err := transcript.ParseAntigravityLog(path)
+		if err == nil && res.Model() != "" {
+			return res.Model()
+		}
+	} else {
+		res, err := transcript.ExtractWindow(path, 0, -1)
+		if err == nil && res.Model() != "" && res.Model() != "unknown" {
+			return res.Model()
+		}
+	}
+
+	// Fallback to settings.json
+	home, err := os.UserHomeDir()
+	if err == nil {
+		paths := []string{
+			filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"),
+			filepath.Join(home, ".gemini", "antigravity", "settings.json"),
+		}
+		for _, p := range paths {
+			data, err := os.ReadFile(p)
+			if err != nil {
+				continue
+			}
+			var cfg struct {
+				Model string `json:"model"`
+			}
+			if err := json.Unmarshal(data, &cfg); err == nil && cfg.Model != "" {
+				return cleanModelName(cfg.Model)
+			}
+		}
+	}
+	return "gemini-3.5-flash"
+}
+
+func cleanModelName(name string) string {
+	name = strings.ToLower(name)
+	if i := strings.Index(name, "("); i >= 0 {
+		name = name[:i]
+	}
+	name = strings.TrimSpace(name)
+	var result []rune
+	lastIsDash := false
+	for _, r := range name {
+		if r == ' ' || r == '-' {
+			if !lastIsDash {
+				result = append(result, '-')
+				lastIsDash = true
+			}
+		} else if r == '.' {
+			result = append(result, r)
+			lastIsDash = false
+		} else if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			result = append(result, r)
+			lastIsDash = false
+		}
+	}
+	name = string(result)
+	name = strings.Trim(name, "-")
+	if name == "" {
+		return "gemini-3.5-flash"
+	}
+	return name
+}
+
+
