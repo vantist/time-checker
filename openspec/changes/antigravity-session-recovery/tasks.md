@@ -7,9 +7,9 @@
 
 ## 2. 進程存活超時自動關閉 (idle-threshold)
 
-- [ ] 2.1 在 `internal/reconcile/reconcile_test.go` 中寫入對 dangling turn 逾期強制 reconcile 的測試案例。測試目前應失敗。
-- [ ] 2.2 在 `internal/reconcile/reconcile.go` 中新增 `idle-threshold` 超時判斷邏輯（15 分鐘），並在 `reconcileTurn` 中修改對已逾期的進行中 turn 的 skip 判斷。
-- [ ] 2.3 執行測試並驗證超時關閉測試通過。
+- [x] 2.1 在 `internal/reconcile/reconcile_test.go` 中寫入對 dangling turn 逾期強制 reconcile 的測試案例。測試目前應失敗。
+- [x] 2.2 在 `internal/reconcile/reconcile.go` 中新增 `idle-threshold` 超時判斷邏輯（15 分鐘），並在 `reconcileTurn` 中修改對已逾期的進行中 turn 的 skip 判斷。
+- [x] 2.3 執行測試並驗證超時關閉測試通過。
 
 ## 3. RecordPrompt 自動搶佔逾期懸空 Turn
 

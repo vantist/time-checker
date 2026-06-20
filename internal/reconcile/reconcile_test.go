@@ -733,3 +733,47 @@ func TestRepairSessions(t *testing.T) {
 	}
 }
 
+func TestReconcile_DanglingTurnTimeout(t *testing.T) {
+	db := newTestDB(t)
+	dir := t.TempDir()
+
+	pid := int64(os.Getpid())
+	
+	// Create transcript
+	transcriptLines := []string{
+		`{"type":"user","isSidechain":false}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50}}}`,
+	}
+	transcriptPath := writeTranscriptLines(t, dir, transcriptLines)
+
+	t.Run("turn under 15 minutes is skipped", func(t *testing.T) {
+		sessionID := "sess-timeout-young"
+		insertSession(t, db, sessionID, pid, 0)
+		turnID := insertTurn(t, db, sessionID, transcriptPath, 0, time.Now().Add(-5*time.Minute))
+
+		reconcile(db)
+
+		var responseAt sql.NullString
+		db.QueryRow("SELECT response_at FROM turns WHERE id=?", turnID).Scan(&responseAt)
+		if responseAt.Valid {
+			t.Error("expected active turn under 15 mins to be skipped")
+		}
+	})
+
+	t.Run("turn over 15 minutes is reconciled", func(t *testing.T) {
+		sessionID := "sess-timeout-old"
+		insertSession(t, db, sessionID, pid, 0)
+		// We set prompt_at to 20 minutes ago
+		turnID := insertTurn(t, db, sessionID, transcriptPath, 0, time.Now().Add(-20*time.Minute))
+
+		reconcile(db)
+
+		var responseAt sql.NullString
+		db.QueryRow("SELECT response_at FROM turns WHERE id=?", turnID).Scan(&responseAt)
+		if !responseAt.Valid || responseAt.String == "" {
+			t.Error("expected active turn over 15 mins to be reconciled")
+		}
+	})
+}
+
+

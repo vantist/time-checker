@@ -153,7 +153,9 @@ func reconcile(conn *sql.DB) {
 func reconcileTurn(conn *sql.DB, dt danglingTurn) error {
 	isLatest := dt.nextOffset == nil
 	if isLatest && process.IsAlive(dt.processPID, dt.processStart) {
-		return nil
+		if time.Since(dt.promptAt) <= 15*time.Minute {
+			return nil
+		}
 	}
 
 	to := -1
@@ -247,10 +249,11 @@ func reconcileTurn(conn *sql.DB, dt danglingTurn) error {
 			responseAt = dt.nextPromptAt.Add(-time.Millisecond)
 		} else {
 			info, err := os.Stat(dt.transcriptPath)
-			if err != nil {
-				return err
+			if err != nil || info.ModTime().IsZero() || info.ModTime().Unix() == 0 {
+				responseAt = time.Now().Add(-time.Millisecond)
+			} else {
+				responseAt = info.ModTime()
 			}
-			responseAt = info.ModTime()
 		}
 		_, err = tx.Exec(
 			`UPDATE turns SET response_at=?, input_tokens=?, output_tokens=?, cache_read_tokens=?, cache_creation_tokens=?,
