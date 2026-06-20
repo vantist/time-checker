@@ -32,6 +32,39 @@ td { padding: 8px 12px; border-bottom: 1px solid #1a2030; }
 tr:hover td { background: #1a2234; }
 .status { font-size: .75rem; color: #64748b; margin-top: 8px; }
 .ratio-bar-item { height: 100%; display: flex; align-items: center; justify-content: center; font-size: .7rem; color: #fff; font-weight: 500; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; transition: width .3s; padding: 0 4px; }
+
+/* Tooltip styles */
+.tooltip {
+  position: relative;
+  cursor: pointer;
+  border-bottom: 1px dotted #64748b;
+  display: inline-block;
+}
+.tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #1e293b;
+  color: #f1f5f9;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  white-space: pre-line;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.2s, visibility 0.2s;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+  z-index: 10;
+  min-width: 180px;
+  text-align: left;
+  border: 1px solid #334155;
+}
+.tooltip:hover::after {
+  visibility: visible;
+  opacity: 1;
+}
 </style>
 </head>
 <body>
@@ -57,7 +90,7 @@ tr:hover td { background: #1a2234; }
   <h2>By Model & Role</h2>
   <div id="ratio-bar" style="height: 24px; display: flex; border-radius: 4px; overflow: hidden; margin-bottom: 16px; background: #1a2030;"></div>
   <table>
-    <thead><tr><th>Model</th><th>Role</th><th>Input Tokens</th><th>Output Tokens</th><th>Cost</th></tr></thead>
+    <thead><tr><th>Model</th><th>Role</th><th>Tokens</th><th>Cost</th></tr></thead>
     <tbody id="tbl-model-usages"></tbody>
   </table>
 </div>
@@ -81,7 +114,7 @@ tr:hover td { background: #1a2234; }
 <div class="section" id="section-workitem">
   <h2>By Work Item</h2>
   <table>
-    <thead><tr><th>Label</th><th>Project</th><th>Sessions</th><th>Agent time</th><th>User time</th><th>Cost</th></tr></thead>
+    <thead><tr><th>Label</th><th>Project</th><th>Sessions</th><th>Agent time</th><th>User time</th><th>Tokens</th><th>Cost</th></tr></thead>
     <tbody id="tbl-workitem"></tbody>
   </table>
 </div>
@@ -89,7 +122,7 @@ tr:hover td { background: #1a2234; }
 <div class="section">
   <h2>Sessions</h2>
   <table>
-    <thead><tr><th>Time</th><th>Project</th><th>Branch</th><th>Agent</th><th>Model</th><th>Turns</th><th>Agent time</th><th>User time</th><th>Work item</th><th>Cost</th></tr></thead>
+    <thead><tr><th>Time</th><th>Project</th><th>Branch</th><th>Agent</th><th>Model</th><th>Turns</th><th>Agent time</th><th>User time</th><th>Work item</th><th>Tokens</th><th>Cost</th></tr></thead>
     <tbody id="tbl-sessions"></tbody>
   </table>
 </div>
