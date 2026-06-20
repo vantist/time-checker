@@ -197,14 +197,18 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 	sessTurns := map[string][]aggregator.Turn{}
 	// session metadata keyed by sessionID
 	type sessState struct {
-		project   string
-		branch    string
-		tool      string
-		model     string
-		startedAt string
-		workItem  string
-		turns     int
-		cost      *float64
+		project      string
+		branch       string
+		tool         string
+		model        string
+		startedAt    string
+		workItem     string
+		turns        int
+		cost         *float64
+		inputTokens  int64
+		outputTokens int64
+		cacheRead    int64
+		cacheCreate  int64
 	}
 	sessMap := map[string]*sessState{}
 	// project → {sessions, agent turns, cost}
@@ -214,6 +218,8 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		cost         *float64
 		inputTokens  int64
 		outputTokens int64
+		cacheRead    int64
+		cacheCreate  int64
 	}
 	projMap := map[string]*projState{}
 	// agent → {sessions, agent turns, cost, inputTokens, outputTokens}
@@ -223,6 +229,8 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		cost         *float64
 		inputTokens  int64
 		outputTokens int64
+		cacheRead    int64
+		cacheCreate  int64
 	}
 	agentMap := map[string]*agentState{}
 	// date → DailyStat
@@ -248,6 +256,10 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		}
 		ss.turns++
 		addCost(&ss.cost, r.cost)
+		ss.inputTokens += r.inputTok
+		ss.outputTokens += r.outputTok
+		ss.cacheRead += r.cacheRead
+		ss.cacheCreate += r.cacheCreate
 
 		// by-project accumulation
 		ps := projMap[r.project]
@@ -259,6 +271,8 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		ps.turns = append(ps.turns, aggregator.Turn{PromptAt: r.promptAt, ResponseAt: r.responseAt})
 		ps.inputTokens += r.inputTok
 		ps.outputTokens += r.outputTok
+		ps.cacheRead += r.cacheRead
+		ps.cacheCreate += r.cacheCreate
 		addCost(&ps.cost, r.cost)
 
 		// by-agent accumulation
@@ -271,6 +285,8 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		as.turns = append(as.turns, aggregator.Turn{PromptAt: r.promptAt, ResponseAt: r.responseAt})
 		as.inputTokens += r.inputTok
 		as.outputTokens += r.outputTok
+		as.cacheRead += r.cacheRead
+		as.cacheCreate += r.cacheCreate
 		addCost(&as.cost, r.cost)
 
 		// daily accumulation
@@ -282,6 +298,8 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		}
 		ds.InputTokens += r.inputTok
 		ds.OutputTokens += r.outputTok
+		ds.CacheReadTokens += r.cacheRead
+		ds.CacheCreationTokens += r.cacheCreate
 
 		// count sessions per day (one turn per session per day bucket)
 		key := date + ":" + r.sessionID
@@ -323,13 +341,15 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		}
 		userSec := int64(aggregator.MergeAndSum(projIntervals).Seconds())
 		res.ByProject = append(res.ByProject, ProjectSummary{
-			Project:           proj,
-			SessionsCount:     len(ps.sessions),
-			AgentTimeSec:      agentSec,
-			UserActiveTimeSec: userSec,
-			CostUSD:           ps.cost,
-			InputTokens:       ps.inputTokens,
-			OutputTokens:      ps.outputTokens,
+			Project:             proj,
+			SessionsCount:       len(ps.sessions),
+			AgentTimeSec:        agentSec,
+			UserActiveTimeSec:   userSec,
+			CostUSD:             ps.cost,
+			InputTokens:         ps.inputTokens,
+			OutputTokens:        ps.outputTokens,
+			CacheReadTokens:     ps.cacheRead,
+			CacheCreationTokens: ps.cacheCreate,
 		})
 	}
 	sort.Slice(res.ByProject, func(i, j int) bool {
@@ -349,12 +369,16 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 			costVal = *as.cost
 		}
 		res.ByAgent = append(res.ByAgent, AgentSummary{
-			Agent:     agent,
-			Sessions:  len(as.sessions),
-			AgentTime: formatTime(agentSec),
-			UserTime:  formatTime(userSec),
-			Tokens:    fmt.Sprintf("%s / %s", formatInt(as.inputTokens), formatInt(as.outputTokens)),
-			Cost:      costVal,
+			Agent:               agent,
+			Sessions:            len(as.sessions),
+			AgentTime:           formatTime(agentSec),
+			UserTime:            formatTime(userSec),
+			Tokens:              fmt.Sprintf("%s / %s / %s / %s", formatInt(as.inputTokens), formatInt(as.outputTokens), formatInt(as.cacheRead), formatInt(as.cacheCreate)),
+			Cost:                costVal,
+			InputTokens:         as.inputTokens,
+			OutputTokens:        as.outputTokens,
+			CacheReadTokens:     as.cacheRead,
+			CacheCreationTokens: as.cacheCreate,
 		})
 	}
 	sort.Slice(res.ByAgent, func(i, j int) bool {
@@ -369,17 +393,21 @@ func Query(conn *sql.DB, opts Options) (Result, error) {
 		agentSec := int64(aggregator.AgentTime(sessTurns[sid]).Seconds())
 		userSec := int64(aggregator.MergeAndSum(sessUserIntervals[sid]).Seconds())
 		res.Sessions = append(res.Sessions, SessionRow{
-			ID:           sid,
-			Project:      ss.project,
-			Branch:       ss.branch,
-			Tool:         ss.tool,
-			Model:        ss.model,
-			StartedAt:    ss.startedAt,
-			WorkItem:     ss.workItem,
-			Turns:        ss.turns,
-			AgentTimeSec: agentSec,
-			UserTimeSec:  userSec,
-			CostUSD:      ss.cost,
+			ID:                  sid,
+			Project:             ss.project,
+			Branch:              ss.branch,
+			Tool:                ss.tool,
+			Model:               ss.model,
+			StartedAt:           ss.startedAt,
+			WorkItem:            ss.workItem,
+			Turns:               ss.turns,
+			AgentTimeSec:        agentSec,
+			UserTimeSec:         userSec,
+			CostUSD:             ss.cost,
+			InputTokens:         ss.inputTokens,
+			OutputTokens:        ss.outputTokens,
+			CacheReadTokens:     ss.cacheRead,
+			CacheCreationTokens: ss.cacheCreate,
 		})
 	}
 	sort.Slice(res.Sessions, func(i, j int) bool {
@@ -456,11 +484,15 @@ type rowData struct {
 func groupByWorkItem(rows []rowData, sessUserIntervals map[string][]aggregator.Interval) []GroupResult {
 	type groupKey struct{ project, label string }
 	type groupState struct {
-		project  string
-		label    string
-		sessions map[string]struct{}
-		turns    []aggregator.Turn
-		cost     *float64
+		project      string
+		label        string
+		sessions     map[string]struct{}
+		turns        []aggregator.Turn
+		cost         *float64
+		inputTokens  int64
+		outputTokens int64
+		cacheRead    int64
+		cacheCreate  int64
 	}
 	groups := map[groupKey]*groupState{}
 	sessGroup := map[string]*groupState{} // sessionID → group pointer
@@ -486,6 +518,10 @@ func groupByWorkItem(rows []rowData, sessUserIntervals map[string][]aggregator.I
 		}
 		g.turns = append(g.turns, aggregator.Turn{PromptAt: r.promptAt, ResponseAt: r.responseAt})
 		addCost(&g.cost, r.cost)
+		g.inputTokens += r.inputTok
+		g.outputTokens += r.outputTok
+		g.cacheRead += r.cacheRead
+		g.cacheCreate += r.cacheCreate
 	}
 
 	var result []GroupResult
@@ -497,12 +533,16 @@ func groupByWorkItem(rows []rowData, sessUserIntervals map[string][]aggregator.I
 		}
 		userSec := int64(aggregator.MergeAndSum(groupIntervals).Seconds())
 		result = append(result, GroupResult{
-			Label:             g.label,
-			Project:           filepath.Base(g.project),
-			SessionsCount:     len(g.sessions),
-			AgentTimeSec:      agentSec,
-			UserActiveTimeSec: userSec,
-			EstimatedCostUSD:  g.cost,
+			Label:               g.label,
+			Project:             filepath.Base(g.project),
+			SessionsCount:       len(g.sessions),
+			AgentTimeSec:        agentSec,
+			UserActiveTimeSec:   userSec,
+			EstimatedCostUSD:    g.cost,
+			InputTokens:         g.inputTokens,
+			OutputTokens:        g.outputTokens,
+			CacheReadTokens:     g.cacheRead,
+			CacheCreationTokens: g.cacheCreate,
 		})
 	}
 	sort.Slice(result, func(i, j int) bool {

@@ -952,8 +952,8 @@ func TestQueryByAgentAggregation(t *testing.T) {
 	if claude.UserTime != "0h 10m" {
 		t.Errorf("Claude UserTime = %q, want %q", claude.UserTime, "0h 10m")
 	}
-	if claude.Tokens != "100 / 50" {
-		t.Errorf("Claude Tokens = %q, want %q", claude.Tokens, "100 / 50")
+	if claude.Tokens != "100 / 50 / 10 / 5" {
+		t.Errorf("Claude Tokens = %q, want %q", claude.Tokens, "100 / 50 / 10 / 5")
 	}
 	if claude.Cost != 0.015 {
 		t.Errorf("Claude Cost = %f, want %f", claude.Cost, 0.015)
@@ -968,8 +968,8 @@ func TestQueryByAgentAggregation(t *testing.T) {
 	if copilot.UserTime != "0h 10m" {
 		t.Errorf("Copilot UserTime = %q, want %q", copilot.UserTime, "0h 10m")
 	}
-	if copilot.Tokens != "200 / 80" {
-		t.Errorf("Copilot Tokens = %q, want %q", copilot.Tokens, "200 / 80")
+	if copilot.Tokens != "200 / 80 / 20 / 10" {
+		t.Errorf("Copilot Tokens = %q, want %q", copilot.Tokens, "200 / 80 / 20 / 10")
 	}
 	if copilot.Cost != 0.025 {
 		t.Errorf("Copilot Cost = %f, want %f", copilot.Cost, 0.025)
