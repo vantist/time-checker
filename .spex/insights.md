@@ -1,5 +1,19 @@
 # Spex Insights
 
+## 2026-06-21 — repair-session-branch [spex-apply]
+
+**Promote candidates:**
+- [ ] Reuse existing scan/query structs for updates when they map to the same columns
+  > **Why**: Defining separate structs for SELECT scans vs UPDATE variables leads to redundant type definitions and field mapping boilerplate when they share the exact same fields.
+  > **How to apply**: If the update target columns align with the scanned/queried columns, reuse the scan struct (e.g. `sessInfo`) directly in the update logic instead of introducing a dedicated `updateInfo` struct.
+- [ ] Helper for mock git repository initialization in tests
+  > **Why**: Mocking git branch or commit history in unit tests requires running multiple commands (`git init`, `git config`, `git checkout`, `git commit`). Duplicating this sequence across multiple test cases increases boilerplate.
+  > **How to apply**: Create a helper like `initGitRepo(t, dir, branch)` to automate repo initialization, basic config, and an initial commit to bind the branch name cleanly.
+
+**Plan deviations:** none
+
+---
+
 ## 2026-06-21 — antigravity-session-recovery [spex-apply]
 
 **Promote candidates:**
