@@ -14,7 +14,7 @@ func ParseAntigravityLog(path string) (WindowResult, error) {
 		return WindowResult{}, err
 	}
 
-	mainModel := getAntigravityModel(all)
+	mainModel := GetAntigravityModel(all)
 	acc := sumWindow(all, 0, len(all))
 
 	var result WindowResult
@@ -26,9 +26,9 @@ func ParseAntigravityLog(path string) (WindowResult, error) {
 	return result, nil
 }
 
-// getAntigravityModel reads and resolves the model name from ~/.gemini/antigravity-cli/settings.json,
+// GetAntigravityModel reads and resolves the model name from ~/.gemini/antigravity-cli/settings.json,
 // falling back to ~/.gemini/antigravity/settings.json, and normalizes it.
-func getAntigravityModel(all []entry) string {
+func GetAntigravityModel(all []entry) string {
 	if logModel := findMainModel(all); logModel != "unknown" {
 		return logModel
 	}
