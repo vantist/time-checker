@@ -69,7 +69,7 @@ type danglingTurn struct {
 	processStart       int64
 	tool               string
 	nextOffset         *int
-	nextTranscriptPath string
+	nextTranscriptPath *string
 	nextPromptAt       *time.Time
 }
 
@@ -80,7 +80,7 @@ func reconcile(conn *sql.DB) {
 		SELECT
 			t.id, t.session_id, t.transcript_path, t.prompt_line_offset, t.prompt_at,
 			t.response_at,
-			s.process_pid, s.process_start, s.tool,
+			COALESCE(s.process_pid, 0), COALESCE(s.process_start, 0), COALESCE(s.tool, ''),
 			(SELECT prompt_line_offset FROM turns t2
 			 WHERE t2.session_id = t.session_id AND t2.id > t.id
 			 ORDER BY t2.id LIMIT 1) AS next_offset,
@@ -99,47 +99,19 @@ func reconcile(conn *sql.DB) {
 	if err != nil {
 		return
 	}
+	defer rows.Close()
 
 	var turns []danglingTurn
 	for rows.Next() {
 		var dt danglingTurn
-		var nextOffset sql.NullInt64
-		var nextTranscriptPath sql.NullString
-		var nextPromptAtStr sql.NullString
-		var promptAtStr string
-		var responseAtStr sql.NullString
-		var toolOpt sql.NullString
 		err := rows.Scan(
-			&dt.id, &dt.sessionID, &dt.transcriptPath, &dt.promptLineOffset, &promptAtStr,
-			&responseAtStr,
-			&dt.processPID, &dt.processStart, &toolOpt,
-			&nextOffset, &nextTranscriptPath, &nextPromptAtStr,
+			&dt.id, &dt.sessionID, &dt.transcriptPath, &dt.promptLineOffset, &dt.promptAt,
+			&dt.responseAt,
+			&dt.processPID, &dt.processStart, &dt.tool,
+			&dt.nextOffset, &dt.nextTranscriptPath, &dt.nextPromptAt,
 		)
 		if err != nil {
 			continue
-		}
-		if toolOpt.Valid {
-			dt.tool = toolOpt.String
-		}
-		dt.promptAt, _ = time.Parse(time.RFC3339Nano, promptAtStr)
-		if responseAtStr.Valid {
-			t, err := time.Parse(time.RFC3339Nano, responseAtStr.String)
-			if err == nil {
-				dt.responseAt = &t
-			}
-		}
-		if nextOffset.Valid {
-			v := int(nextOffset.Int64)
-			dt.nextOffset = &v
-		}
-		if nextTranscriptPath.Valid {
-			dt.nextTranscriptPath = nextTranscriptPath.String
-		}
-		if nextPromptAtStr.Valid {
-			t, err := time.Parse(time.RFC3339Nano, nextPromptAtStr.String)
-			if err == nil {
-				dt.nextPromptAt = &t
-			}
 		}
 		turns = append(turns, dt)
 	}
@@ -159,7 +131,7 @@ func reconcileTurn(conn *sql.DB, dt danglingTurn) error {
 	}
 
 	to := -1
-	if dt.nextOffset != nil && dt.nextTranscriptPath == dt.transcriptPath {
+	if dt.nextOffset != nil && dt.nextTranscriptPath != nil && *dt.nextTranscriptPath == dt.transcriptPath {
 		to = *dt.nextOffset
 	}
 
@@ -288,7 +260,7 @@ func reconcileTurn(conn *sql.DB, dt danglingTurn) error {
 
 func repairSessions(db *sql.DB) {
 	rows, err := db.Query(`
-		SELECT id, tool, model, project FROM sessions
+		SELECT id, COALESCE(tool, ''), COALESCE(model, ''), COALESCE(project, '') FROM sessions
 		WHERE project IS NULL OR project = '' OR model IS NULL OR model = ''
 	`)
 	if err != nil {
@@ -305,20 +277,9 @@ func repairSessions(db *sql.DB) {
 	var sessList []sessInfo
 	for rows.Next() {
 		var s sessInfo
-		var toolOpt, modelOpt, projectOpt sql.NullString
-		if err := rows.Scan(&s.id, &toolOpt, &modelOpt, &projectOpt); err != nil {
-			continue
+		if err := rows.Scan(&s.id, &s.tool, &s.model, &s.project); err == nil {
+			sessList = append(sessList, s)
 		}
-		if toolOpt.Valid {
-			s.tool = toolOpt.String
-		}
-		if modelOpt.Valid {
-			s.model = modelOpt.String
-		}
-		if projectOpt.Valid {
-			s.project = projectOpt.String
-		}
-		sessList = append(sessList, s)
 	}
 	rows.Close()
 
@@ -342,45 +303,12 @@ func repairSessions(db *sql.DB) {
 		newProject := s.project
 		newModel := s.model
 
-		// Resolve project path if empty
 		if s.project == "" {
-			homeDir, err := os.UserHomeDir()
-			if err == nil {
-				if f, err := os.Open(pathToRead); err == nil {
-					sc := bufio.NewScanner(f)
-					sc.Buffer(make([]byte, 64*1024), 1024*1024)
-
-					var foundProj string
-					for sc.Scan() {
-						line := sc.Text()
-						paths := extractPathsFromLine(line, homeDir)
-						for _, p := range paths {
-							if isPathExcluded(p) {
-								continue
-							}
-							if root, ok := findProjectRoot(p); ok {
-								foundProj = root
-								break
-							}
-						}
-						if foundProj != "" {
-							break
-						}
-					}
-					f.Close()
-
-					if foundProj != "" {
-						newProject = foundProj
-					} else {
-						if wd, err := os.Getwd(); err == nil {
-							newProject = wd
-						}
-					}
-				}
+			if homeDir, err := os.UserHomeDir(); err == nil {
+				newProject = resolveProjectPath(pathToRead, homeDir)
 			}
 		}
 
-		// Resolve model if empty
 		if s.model == "" {
 			newModel = resolveModel(pathToRead, s.tool)
 		}
@@ -418,6 +346,34 @@ func repairSessions(db *sql.DB) {
 	_ = tx.Commit()
 }
 
+func resolveProjectPath(path string, homeDir string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		if wd, err := os.Getwd(); err == nil {
+			return wd
+		}
+		return ""
+	}
+	defer f.Close()
+
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+
+	for sc.Scan() {
+		for _, p := range extractPathsFromLine(sc.Text(), homeDir) {
+			if !isPathExcluded(p) {
+				if root, ok := findProjectRoot(p); ok {
+					return root
+				}
+			}
+		}
+	}
+	if wd, err := os.Getwd(); err == nil {
+		return wd
+	}
+	return ""
+}
+
 func findExistingTranscriptPath(db *sql.DB, sessionID string) (string, bool) {
 	rows, err := db.Query(`
 		SELECT transcript_path FROM turns
@@ -436,19 +392,15 @@ func findExistingTranscriptPath(db *sql.DB, sessionID string) (string, bool) {
 		}
 
 		resolvedPath := expandHomePath(rawPath)
-
 		fullPath := strings.Replace(resolvedPath, "transcript.jsonl", "transcript_full.jsonl", 1)
-		if _, err := os.Stat(fullPath); err == nil {
-			return fullPath, true
-		}
-		if _, err := os.Stat(resolvedPath); err == nil {
-			return resolvedPath, true
+		for _, p := range []string{fullPath, resolvedPath} {
+			if _, err := os.Stat(p); err == nil {
+				return p, true
+			}
 		}
 	}
 	return "", false
 }
-
-
 
 func expandHomePath(path string) string {
 	if len(path) >= 2 && path[:2] == "~/" {
@@ -470,15 +422,10 @@ func extractPathsFromLine(line string, homeDir string) []string {
 		}
 		start := idx + i
 		end := start + len(homeDir)
-		for end < len(line) {
-			r := line[end]
-			if r == ' ' || r == '"' || r == '\'' || r == '`' || r == '\\' || r == ',' || r == '}' || r == ']' || r == '\n' || r == '\r' || r == '\t' {
-				break
-			}
+		for end < len(line) && !strings.ContainsRune(" '\"`\\,}]\n\r\t", rune(line[end])) {
 			end++
 		}
-		path := line[start:end]
-		paths = append(paths, path)
+		paths = append(paths, line[start:end])
 		idx = end
 	}
 	return paths
@@ -526,34 +473,24 @@ func findProjectRoot(path string) (string, bool) {
 
 func resolveModel(path string, tool string) string {
 	if tool == "antigravity" {
-		res, err := transcript.ParseAntigravityLog(path)
-		if err == nil && res.Model() != "" {
+		if res, err := transcript.ParseAntigravityLog(path); err == nil && res.Model() != "" {
 			return res.Model()
 		}
-	} else {
-		res, err := transcript.ExtractWindow(path, 0, -1)
-		if err == nil && res.Model() != "" && res.Model() != "unknown" {
-			return res.Model()
-		}
+	} else if res, err := transcript.ExtractWindow(path, 0, -1); err == nil && res.Model() != "" && res.Model() != "unknown" {
+		return res.Model()
 	}
 
 	// Fallback to settings.json
-	home, err := os.UserHomeDir()
-	if err == nil {
-		paths := []string{
-			filepath.Join(home, ".gemini", "antigravity-cli", "settings.json"),
-			filepath.Join(home, ".gemini", "antigravity", "settings.json"),
-		}
-		for _, p := range paths {
-			data, err := os.ReadFile(p)
-			if err != nil {
-				continue
-			}
-			var cfg struct {
-				Model string `json:"model"`
-			}
-			if err := json.Unmarshal(data, &cfg); err == nil && cfg.Model != "" {
-				return cleanModelName(cfg.Model)
+	if home, err := os.UserHomeDir(); err == nil {
+		for _, name := range []string{"antigravity-cli", "antigravity"} {
+			p := filepath.Join(home, ".gemini", name, "settings.json")
+			if data, err := os.ReadFile(p); err == nil {
+				var cfg struct {
+					Model string `json:"model"`
+				}
+				if err := json.Unmarshal(data, &cfg); err == nil && cfg.Model != "" {
+					return cleanModelName(cfg.Model)
+				}
 			}
 		}
 	}

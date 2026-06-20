@@ -46,51 +46,21 @@ func RecordPrompt(conn *sql.DB, input PromptInput) error {
 	}
 
 	if input.Tool == "antigravity" {
-		rows, err := conn.Query(`SELECT id, prompt_at FROM turns WHERE session_id = ? AND response_at IS NULL`, stableID)
+		var activeCount int
+		err := conn.QueryRow(`
+			SELECT COUNT(*) FROM turns
+			WHERE session_id = ? AND response_at IS NULL AND (strftime('%s', ?) - strftime('%s', prompt_at)) <= 900
+		`, stableID, now.Format(time.RFC3339Nano)).Scan(&activeCount)
 		if err != nil {
 			return fmt.Errorf("check active turn: %w", err)
 		}
-		defer rows.Close()
-
-		type activeTurn struct {
-			id       int64
-			promptAt time.Time
+		if activeCount > 0 {
+			return nil
 		}
-		var activeTurns []activeTurn
-		for rows.Next() {
-			var at activeTurn
-			var promptAtStr string
-			if err := rows.Scan(&at.id, &promptAtStr); err != nil {
-				continue
-			}
-			// prompt_at might be RFC3339 or RFC3339Nano
-			if t, err := time.Parse(time.RFC3339Nano, promptAtStr); err == nil {
-				at.promptAt = t
-			} else if t, err := time.Parse(time.RFC3339, promptAtStr); err == nil {
-				at.promptAt = t
-			}
-			activeTurns = append(activeTurns, at)
-		}
-		rows.Close()
 
-		if len(activeTurns) > 0 {
-			var hasYoungActiveTurn bool
-			for _, at := range activeTurns {
-				if time.Since(at.promptAt) <= 15*time.Minute {
-					hasYoungActiveTurn = true
-					break
-				}
-			}
-
-			if hasYoungActiveTurn {
-				return nil
-			}
-
-			// Preempt: force close expired active turns
-			_, err = conn.Exec(`UPDATE turns SET response_at = ? WHERE session_id = ? AND response_at IS NULL`, now.Format(time.RFC3339Nano), stableID)
-			if err != nil {
-				return fmt.Errorf("preempt active turns: %w", err)
-			}
+		_, err = conn.Exec(`UPDATE turns SET response_at = ? WHERE session_id = ? AND response_at IS NULL`, now.Format(time.RFC3339Nano), stableID)
+		if err != nil {
+			return fmt.Errorf("preempt active turns: %w", err)
 		}
 	}
 
