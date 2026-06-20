@@ -11,6 +11,8 @@ func init() {
 	rootCmd.AddCommand(setupCmd)
 	setupCmd.Flags().Bool("claude-code", false, "Set up Claude Code hooks")
 	setupCmd.Flags().Bool("copilot", false, "Show Copilot CLI hook setup instructions")
+	setupCmd.Flags().Bool("antigravity", false, "Set up Google Antigravity hooks")
+	setupCmd.Flags().Bool("codex", false, "Set up OpenAI Codex hooks")
 }
 
 var setupCmd = &cobra.Command{
@@ -19,6 +21,8 @@ var setupCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		claudeCode, _ := cmd.Flags().GetBool("claude-code")
 		copilot, _ := cmd.Flags().GetBool("copilot")
+		antigravity, _ := cmd.Flags().GetBool("antigravity")
+		codex, _ := cmd.Flags().GetBool("codex")
 
 		if claudeCode {
 			if err := setup.SetupClaudeCode(); err != nil {
@@ -30,6 +34,22 @@ var setupCmd = &cobra.Command{
 
 		if copilot {
 			fmt.Print(setup.CopilotInstructions)
+			return nil
+		}
+
+		if antigravity {
+			if err := setup.SetupAntigravity(); err != nil {
+				return err
+			}
+			fmt.Println("Google Antigravity hooks configured in ~/.gemini/config/hooks.json")
+			return nil
+		}
+
+		if codex {
+			if err := setup.SetupCodex(); err != nil {
+				return err
+			}
+			fmt.Println("OpenAI Codex hooks configured in ~/.codex/hooks.json")
 			return nil
 		}
 
