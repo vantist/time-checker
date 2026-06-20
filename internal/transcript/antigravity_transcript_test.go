@@ -57,3 +57,84 @@ func TestParseAntigravityLog_FileNotFound(t *testing.T) {
 		t.Error("expected error for non-existent file, got nil")
 	}
 }
+
+func TestParseAntigravityLog_SettingsAndZeroTokens(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Create ~/.gemini/antigravity-cli/settings.json
+	cliConfigDir := filepath.Join(tmpDir, ".gemini", "antigravity-cli")
+	if err := os.MkdirAll(cliConfigDir, 0o700); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	settingsPath := filepath.Join(cliConfigDir, "settings.json")
+	settingsJSON := `{"model": "Gemini 3.5 Flash (Medium)"}`
+	if err := os.WriteFile(settingsPath, []byte(settingsJSON), 0o600); err != nil {
+		t.Fatalf("failed to write settings: %v", err)
+	}
+
+	// Create transcript.jsonl with typical Antigravity lines (no token usage)
+	transcriptPath := filepath.Join(tmpDir, "transcript.jsonl")
+	transcriptContent := `{"type":"USER_INPUT","content":"hello"}
+{"type":"PLANNER_RESPONSE","status":"DONE"}
+`
+	if err := os.WriteFile(transcriptPath, []byte(transcriptContent), 0o600); err != nil {
+		t.Fatalf("failed to write transcript: %v", err)
+	}
+
+	// Parse
+	res, err := transcript.ParseAntigravityLog(transcriptPath)
+	if err != nil {
+		t.Fatalf("ParseAntigravityLog failed: %v", err)
+	}
+
+	// Should return 1 usage, with normalized model name, and 0 tokens
+	if len(res.Usages) != 1 {
+		t.Fatalf("expected 1 usage, got %d", len(res.Usages))
+	}
+
+	u := res.Usages[0]
+	if u.Model != "gemini-3.5-flash" {
+		t.Errorf("expected model = %q, got %q", "gemini-3.5-flash", u.Model)
+	}
+	if u.InputTokens != 0 || u.OutputTokens != 0 {
+		t.Errorf("expected 0 tokens, got Input=%d, Output=%d", u.InputTokens, u.OutputTokens)
+	}
+	if u.IsSubagent {
+		t.Error("expected IsSubagent = false")
+	}
+}
+
+func TestParseAntigravityLog_SettingsFallback(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Create ~/.gemini/antigravity/settings.json (no -cli suffix)
+	configDir := filepath.Join(tmpDir, ".gemini", "antigravity")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	settingsPath := filepath.Join(configDir, "settings.json")
+	settingsJSON := `{"model": "Gemini 2.5 Pro"}`
+	if err := os.WriteFile(settingsPath, []byte(settingsJSON), 0o600); err != nil {
+		t.Fatalf("failed to write settings: %v", err)
+	}
+
+	// Create transcript
+	transcriptPath := filepath.Join(tmpDir, "transcript.jsonl")
+	if err := os.WriteFile(transcriptPath, []byte(`{"type":"PLANNER_RESPONSE"}`), 0o600); err != nil {
+		t.Fatalf("failed to write transcript: %v", err)
+	}
+
+	res, err := transcript.ParseAntigravityLog(transcriptPath)
+	if err != nil {
+		t.Fatalf("ParseAntigravityLog failed: %v", err)
+	}
+
+	if len(res.Usages) != 1 {
+		t.Fatalf("expected 1 usage, got %d", len(res.Usages))
+	}
+	if res.Usages[0].Model != "gemini-2.5-pro" {
+		t.Errorf("expected model = %q, got %q", "gemini-2.5-pro", res.Usages[0].Model)
+	}
+}
