@@ -10,8 +10,8 @@
 
 ## 3. 實作 JSONL 共享 Provider (JSONLProvider)
 
-- [ ] 3.1 撰寫單元測試以模擬 JSONL 日誌測試 `JSONLProvider` 的 `ExtractLastTurn`、`ExtractWindow` 與 subagent 遞迴解析
-- [ ] 3.2 重構並封裝 `internal/transcript/extract.go` 的 JSONL 解析邏輯至 `JSONLProvider`，使 Claude, Antigravity, Codex 共享實作
+- [x] 3.1 撰寫單元測試以模擬 JSONL 日誌測試 `JSONLProvider` 的 `ExtractLastTurn`、`ExtractWindow` 與 subagent 遞迴解析
+- [x] 3.2 重構並封裝 `internal/transcript/extract.go` 的 JSONL 解析邏輯至 `JSONLProvider`，使 Claude, Antigravity, Codex 共享實作
 
 ## 4. 實作 Copilot CLI Provider (CopilotProvider)
 
