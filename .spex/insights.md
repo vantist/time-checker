@@ -1,5 +1,17 @@
 # Spex Insights
 
+## [spex-apply] tool-log-provider — 2026-06-20
+
+### Promote candidates
+
+- [ ] Normalize camelCase keys to snake_case at unmarshal boundary
+  > **Why**: Different CLI hook payload schemas have different field case conventions (`transcript_path` vs `transcriptPath`). Normalizing camelCase keys directly in `readStdinJSON` prevents duplicate normalization logic across multiple commands.
+  > **How to apply**: When defining hook payloads for new CLI tools, add camelCase json tags alongside snake_case in `hookPayload` struct, and normalize them in `readStdinJSON` immediately after unmarshaling.
+
+**Plan deviations:** none
+
+---
+
 ## [spex-apply] fix-session-token-tracking — 2026-06-19
 
 ### Promote candidates
