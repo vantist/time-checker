@@ -176,6 +176,16 @@ func resolvePromptInput(cmd *cobra.Command) (recorder.PromptInput, error) {
 		}
 	}
 
+	if project == "" {
+		if wd, err := os.Getwd(); err == nil {
+			project = wd
+		}
+	}
+
+	if tool == "antigravity" && model == "" {
+		model = transcript.GetAntigravityModel(nil)
+	}
+
 	envInput, _ := resolvePromptInputFromEnv()
 
 	return recorder.PromptInput{

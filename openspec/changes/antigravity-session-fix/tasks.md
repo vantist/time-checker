@@ -5,11 +5,11 @@
 
 ## 2. Project Path Fallback and Default Model in resolvePromptInput
 
-- [ ] 2.1 In `cmd/tt/record_test.go`, write test cases for `resolvePromptInput` verifying:
+- [x] 2.1 In `cmd/tt/record_test.go`, write test cases for `resolvePromptInput` verifying:
   - If project path is not provided via command-line flags and stdin payload is missing, it falls back to the current directory (`os.Getwd()`).
   - If the integration tool is `"antigravity"` and model is empty, it attempts to load the default model from configurations.
-- [ ] 2.2 In `cmd/tt/record.go` (`resolvePromptInput`), implement the project path fallback to `os.Getwd()`.
-- [ ] 2.3 In `cmd/tt/record.go` (`resolvePromptInput`), implement loading and resolving default model for `"antigravity"` using `transcript.GetAntigravityModel(nil)` when the model is empty. Ensure all tests in `cmd/tt` pass.
+- [x] 2.2 In `cmd/tt/record.go` (`resolvePromptInput`), implement the project path fallback to `os.Getwd()`.
+- [x] 2.3 In `cmd/tt/record.go` (`resolvePromptInput`), implement loading and resolving default model for `"antigravity"` using `transcript.GetAntigravityModel(nil)` when the model is empty. Ensure all tests in `cmd/tt` pass.
 
 ## 3. Reconcile Sessions Model Backfill
 

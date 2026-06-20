@@ -645,3 +645,69 @@ func TestRecordPrompt_Copilot(t *testing.T) {
 		t.Errorf("dbTranscriptPath = %q, want /mock/transcript.jsonl", dbTranscriptPath)
 	}
 }
+
+func TestResolvePromptInput_FallbackAndDefaultModel(t *testing.T) {
+	// Mock HOME for settings
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	// Create a mock settings.json for antigravity
+	cliConfigDir := filepath.Join(tmpDir, ".gemini", "antigravity-cli")
+	if err := os.MkdirAll(cliConfigDir, 0o700); err != nil {
+		t.Fatalf("failed to create config dir: %v", err)
+	}
+	settingsPath := filepath.Join(cliConfigDir, "settings.json")
+	if err := os.WriteFile(settingsPath, []byte(`{"model": "Gemini 2.5 Flash Test"}`), 0o600); err != nil {
+		t.Fatalf("failed to write settings: %v", err)
+	}
+
+	// Mock empty stdin (no interactive terminal stdin)
+	oldStdin := os.Stdin
+	defer func() { os.Stdin = oldStdin }()
+	r, w, _ := os.Pipe()
+	os.Stdin = r
+	w.Close()
+
+	// 1. Verify project path fallback to os.Getwd()
+	cmd := &cobra.Command{}
+	cmd.Flags().String("session", "", "")
+	cmd.Flags().String("project", "", "")
+	cmd.Flags().String("tool", "claude-code", "")
+	cmd.Flags().String("model", "", "")
+	cmd.Flags().String("transcript-path", "", "")
+
+	cmd.Flags().Set("tool", "claude-code")
+	// Note: project is not set
+
+	input, err := resolvePromptInput(cmd)
+	if err != nil {
+		t.Fatalf("resolvePromptInput: %v", err)
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
+	if input.Project != wd {
+		t.Errorf("Project = %q, want fallback to working dir %q", input.Project, wd)
+	}
+
+	// 2. Verify antigravity empty model fallback to default model from configurations
+	cmdAntigravity := &cobra.Command{}
+	cmdAntigravity.Flags().String("session", "", "")
+	cmdAntigravity.Flags().String("project", "", "")
+	cmdAntigravity.Flags().String("tool", "claude-code", "")
+	cmdAntigravity.Flags().String("model", "", "")
+	cmdAntigravity.Flags().String("transcript-path", "", "")
+
+	cmdAntigravity.Flags().Set("tool", "antigravity")
+	// Note: model is empty
+
+	inputAntigravity, err := resolvePromptInput(cmdAntigravity)
+	if err != nil {
+		t.Fatalf("resolvePromptInput (antigravity): %v", err)
+	}
+	if inputAntigravity.Model != "gemini-2.5-flash-test" {
+		t.Errorf("Model = %q, want default gemini-2.5-flash-test", inputAntigravity.Model)
+	}
+}
