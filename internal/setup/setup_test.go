@@ -708,5 +708,109 @@ func TestSetupCopilotReplacesOldVersion(t *testing.T) {
 	}
 }
 
+func TestIsActive(t *testing.T) {
+	t.Run("ClaudeCode", func(t *testing.T) {
+		home := setupHome(t)
+		if setup.IsClaudeCodeActive() {
+			t.Error("expected IsClaudeCodeActive to be false for non-existent dir")
+		}
+
+		claudeDir := filepath.Join(home, ".claude")
+		if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
+		}
+		if !setup.IsClaudeCodeActive() {
+			t.Error("expected IsClaudeCodeActive to be true for existing dir")
+		}
+
+		// Cleanup and test file case
+		if err := os.RemoveAll(claudeDir); err != nil {
+			t.Fatalf("failed to remove dir: %v", err)
+		}
+		if err := os.WriteFile(claudeDir, []byte("plain file"), 0o600); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+		if setup.IsClaudeCodeActive() {
+			t.Error("expected IsClaudeCodeActive to be false when path is a file")
+		}
+	})
+
+	t.Run("Copilot", func(t *testing.T) {
+		home := setupHome(t)
+		if setup.IsCopilotActive() {
+			t.Error("expected IsCopilotActive to be false for non-existent dir")
+		}
+
+		copilotDir := filepath.Join(home, ".copilot")
+		if err := os.MkdirAll(copilotDir, 0o755); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
+		}
+		if !setup.IsCopilotActive() {
+			t.Error("expected IsCopilotActive to be true for existing dir")
+		}
+
+		if err := os.RemoveAll(copilotDir); err != nil {
+			t.Fatalf("failed to remove dir: %v", err)
+		}
+		if err := os.WriteFile(copilotDir, []byte("plain file"), 0o600); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+		if setup.IsCopilotActive() {
+			t.Error("expected IsCopilotActive to be false when path is a file")
+		}
+	})
+
+	t.Run("Antigravity", func(t *testing.T) {
+		home := setupHome(t)
+		if setup.IsAntigravityActive() {
+			t.Error("expected IsAntigravityActive to be false for non-existent dir")
+		}
+
+		geminiDir := filepath.Join(home, ".gemini")
+		if err := os.MkdirAll(geminiDir, 0o755); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
+		}
+		if !setup.IsAntigravityActive() {
+			t.Error("expected IsAntigravityActive to be true for existing dir")
+		}
+
+		if err := os.RemoveAll(geminiDir); err != nil {
+			t.Fatalf("failed to remove dir: %v", err)
+		}
+		if err := os.WriteFile(geminiDir, []byte("plain file"), 0o600); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+		if setup.IsAntigravityActive() {
+			t.Error("expected IsAntigravityActive to be false when path is a file")
+		}
+	})
+
+	t.Run("Codex", func(t *testing.T) {
+		home := setupHome(t)
+		if setup.IsCodexActive() {
+			t.Error("expected IsCodexActive to be false for non-existent dir")
+		}
+
+		codexDir := filepath.Join(home, ".codex")
+		if err := os.MkdirAll(codexDir, 0o755); err != nil {
+			t.Fatalf("failed to create dir: %v", err)
+		}
+		if !setup.IsCodexActive() {
+			t.Error("expected IsCodexActive to be true for existing dir")
+		}
+
+		if err := os.RemoveAll(codexDir); err != nil {
+			t.Fatalf("failed to remove dir: %v", err)
+		}
+		if err := os.WriteFile(codexDir, []byte("plain file"), 0o600); err != nil {
+			t.Fatalf("failed to write file: %v", err)
+		}
+		if setup.IsCodexActive() {
+			t.Error("expected IsCodexActive to be false when path is a file")
+		}
+	})
+}
+
+
 
 
