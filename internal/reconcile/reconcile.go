@@ -264,5 +264,16 @@ func reconcileTurn(conn *sql.DB, dt danglingTurn) error {
 		return err
 	}
 
+	if result.Model() != "" {
+		_, err = tx.Exec(
+			"UPDATE sessions SET model=? WHERE id=? AND (model IS NULL OR model='')",
+			result.Model(),
+			dt.sessionID,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	return tx.Commit()
 }

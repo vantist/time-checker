@@ -563,3 +563,85 @@ func TestReconcile_LogPathSwitch(t *testing.T) {
 		t.Errorf("expected 30 input tokens, got %d", inputTokens.Int64)
 	}
 }
+
+func TestReconcile_SessionModelBackfill(t *testing.T) {
+	db := newTestDB(t)
+	dir := t.TempDir()
+
+	// 1. Create a session with empty/NULL model
+	_, err := db.Exec(`
+		INSERT INTO sessions (id, started_at, process_pid, process_start, tool, model) 
+		VALUES (?, ?, ?, ?, ?, NULL)`,
+		"sess-backfill", time.Now().UTC().Format(time.RFC3339), 0, 0, "claude-code",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Create transcript with assistant response having a model name
+	lines := []string{
+		`{"type":"user","isSidechain":false}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-3-5-sonnet","usage":{"input_tokens":10,"output_tokens":5}}}`,
+	}
+	path := writeTranscriptLines(t, dir, lines)
+
+	// Insert dangling turn
+	turnID := insertTurn(t, db, "sess-backfill", path, 0, time.Now().Add(-10*time.Second))
+
+	// Reconcile
+	reconcile(db)
+
+	// Verify turn model is updated
+	var turnModel sql.NullString
+	err = db.QueryRow("SELECT model FROM turns WHERE id=?", turnID).Scan(&turnModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !turnModel.Valid || turnModel.String != "claude-3-5-sonnet" {
+		t.Errorf("expected turn model = claude-3-5-sonnet, got %q", turnModel.String)
+	}
+
+	// Verify session model is backfilled
+	var sessModel sql.NullString
+	err = db.QueryRow("SELECT model FROM sessions WHERE id=?", "sess-backfill").Scan(&sessModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sessModel.Valid || sessModel.String != "claude-3-5-sonnet" {
+		t.Errorf("expected session model = claude-3-5-sonnet, got %q", sessModel.String)
+	}
+
+	// 2. Create another session with an already set model, check it is NOT overwritten
+	_, err = db.Exec(`
+		INSERT INTO sessions (id, started_at, process_pid, process_start, tool, model) 
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		"sess-preset", time.Now().UTC().Format(time.RFC3339), 0, 0, "claude-code", "preset-model",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert dangling turn for that session
+	turnID2 := insertTurn(t, db, "sess-preset", path, 0, time.Now().Add(-10*time.Second))
+
+	// Reconcile again
+	reconcile(db)
+
+	// Verify turn model updated
+	err = db.QueryRow("SELECT model FROM turns WHERE id=?", turnID2).Scan(&turnModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !turnModel.Valid || turnModel.String != "claude-3-5-sonnet" {
+		t.Errorf("expected turn model = claude-3-5-sonnet, got %q", turnModel.String)
+	}
+
+	// Verify session model is still the preset one
+	err = db.QueryRow("SELECT model FROM sessions WHERE id=?", "sess-preset").Scan(&sessModel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sessModel.Valid || sessModel.String != "preset-model" {
+		t.Errorf("expected session model = preset-model, got %q", sessModel.String)
+	}
+}

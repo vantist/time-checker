@@ -13,5 +13,5 @@
 
 ## 3. Reconcile Sessions Model Backfill
 
-- [ ] 3.1 In `internal/reconcile/reconcile_test.go`, add a failing test verifying that when a turn's model is reconciled, the corresponding session's model is updated/backfilled if it was previously empty or NULL.
-- [ ] 3.2 In `internal/reconcile/reconcile.go` (`reconcileTurn`), implement backfilling the `sessions.model` field within the database transaction when a non-empty turn model is found and the session's model is empty or NULL. Ensure all tests in `internal/reconcile` pass.
+- [x] 3.1 In `internal/reconcile/reconcile_test.go`, add a failing test verifying that when a turn's model is reconciled, the corresponding session's model is updated/backfilled if it was previously empty or NULL.
+- [x] 3.2 In `internal/reconcile/reconcile.go` (`reconcileTurn`), implement backfilling the `sessions.model` field within the database transaction when a non-empty turn model is found and the session's model is empty or NULL. Ensure all tests in `internal/reconcile` pass.
