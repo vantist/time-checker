@@ -1,5 +1,21 @@
 # Spex Insights
 
+## 2026-06-21 — antigravity-turns-fix [spex-apply]
+
+**Promote candidates:**
+
+- [ ] Safe JSON file loading using `os.ReadFile` + `json.Unmarshal` in CLI/library helpers
+  > **Why**: Using `os.Open` and `json.NewDecoder` requires verbose error handling and manual `Close()`. For small configuration files (like settings.json), `os.ReadFile` and `json.Unmarshal` are much simpler and flatter.
+  > **How to apply**: For reading configuration or metadata files under 10MB, use `os.ReadFile` and `json.Unmarshal` directly.
+
+- [ ] Home-directory-sensitive file path probing in CLI providers
+  > **Why**: Storing paths statically can break when tools migrate directories (e.g. `~/.gemini/antigravity` vs `~/.gemini/antigravity-cli`). Probing for file existence in `ResolvePath` prevents users from having to manually configure path overrides.
+  > **How to apply**: Implement fallback probing using `os.Stat(expandHome(...))` inside provider paths to detect migrated paths automatically.
+
+**Plan deviations:** none
+
+---
+
 ## [spex-apply] tool-log-provider — 2026-06-20
 
 ### Promote candidates
