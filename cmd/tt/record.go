@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -215,15 +214,32 @@ func resolveResponseInput(cmd *cobra.Command, conn *sql.DB) (sessionID, tokensJS
 			tool = dbTool
 		}
 
-		if tool == "copilot-cli" || tool == "antigravity" {
+		p, ok := transcript.GetProvider(tool)
+		if ok {
+			stdinPath := ""
+			if stdin != nil {
+				stdinPath = stdin.TranscriptPath
+			}
+			resolvedPath := p.ResolvePath(sessionID, stdinPath)
+
+			var storedPath string
+			var offset *int
+			conn.QueryRow(
+				"SELECT transcript_path, prompt_line_offset FROM turns WHERE session_id=? ORDER BY id DESC LIMIT 1",
+				stableID,
+			).Scan(&storedPath, &offset)
+
+			path := resolvedPath
+			if storedPath != "" {
+				path = storedPath
+			}
+
 			var res transcript.WindowResult
 			var err error
-			if tool == "copilot-cli" {
-				path := filepath.Join("~", ".copilot", "session-state", sessionID, "events.jsonl")
-				res, err = transcript.ParseCopilotLog(path)
+			if offset != nil && storedPath != "" {
+				res, err = p.ExtractWindow(path, *offset, -1)
 			} else {
-				path := filepath.Join("~", ".gemini", "antigravity", "brain", sessionID, ".system_generated", "logs", "transcript.jsonl")
-				res, err = transcript.ParseAntigravityLog(path)
+				res, err = p.ExtractLastTurn(path)
 			}
 			if err == nil {
 				tokensJSON = marshalWindowResult(res)
@@ -232,11 +248,7 @@ func resolveResponseInput(cmd *cobra.Command, conn *sql.DB) (sessionID, tokensJS
 				fmt.Fprintf(os.Stderr, "tt: failed to parse %s log: %v\n", tool, err)
 			}
 		} else {
-			transcriptPath := ""
-			if stdin != nil {
-				transcriptPath = stdin.TranscriptPath
-			}
-			tokensJSON, model = resolveTokensFromTranscript(conn, sessionID, transcriptPath)
+			fmt.Fprintf(os.Stderr, "tt: unknown provider for tool: %q\n", tool)
 		}
 	}
 	return sessionID, tokensJSON, model, nil
@@ -275,7 +287,11 @@ func resolveTokensFromTranscript(conn *sql.DB, sessionID, transcriptPath string)
 
 // extractFromTranscriptAtOffset extracts token usage from offset to EOF.
 func extractFromTranscriptAtOffset(path string, offset int) (tokensJSON, model string) {
-	result, err := transcript.ExtractWindow(path, offset, -1)
+	p, ok := transcript.GetProvider("claude-code")
+	if !ok {
+		return "", ""
+	}
+	result, err := p.ExtractWindow(path, offset, -1)
 	if err != nil || (result.InputTokens() == 0 && result.OutputTokens() == 0) {
 		return "", result.Model()
 	}
@@ -284,7 +300,11 @@ func extractFromTranscriptAtOffset(path string, offset int) (tokensJSON, model s
 
 // extractFromTranscript extracts token usage for the last user turn.
 func extractFromTranscript(path string) (tokensJSON, model string) {
-	result, err := transcript.ExtractLastTurn(path)
+	p, ok := transcript.GetProvider("claude-code")
+	if !ok {
+		return "", ""
+	}
+	result, err := p.ExtractLastTurn(path)
 	if err != nil || (result.InputTokens() == 0 && result.OutputTokens() == 0) {
 		return "", result.Model()
 	}

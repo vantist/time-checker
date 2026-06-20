@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -63,6 +64,7 @@ type danglingTurn struct {
 	responseAt            *time.Time // non-nil when Stop hook already set it
 	processPID            int64
 	processStart          int64
+	tool                  string
 	nextOffset            *int
 	nextTranscriptPath    string
 	nextPromptAt          *time.Time
@@ -73,7 +75,7 @@ func reconcile(conn *sql.DB) {
 		SELECT
 			t.id, t.session_id, t.transcript_path, t.prompt_line_offset, t.prompt_at,
 			t.response_at,
-			s.process_pid, s.process_start,
+			s.process_pid, s.process_start, s.tool,
 			(SELECT prompt_line_offset FROM turns t2
 			 WHERE t2.session_id = t.session_id AND t2.id > t.id
 			 ORDER BY t2.id LIMIT 1) AS next_offset,
@@ -101,14 +103,18 @@ func reconcile(conn *sql.DB) {
 		var nextPromptAtStr sql.NullString
 		var promptAtStr string
 		var responseAtStr sql.NullString
+		var toolOpt sql.NullString
 		err := rows.Scan(
 			&dt.id, &dt.sessionID, &dt.transcriptPath, &dt.promptLineOffset, &promptAtStr,
 			&responseAtStr,
-			&dt.processPID, &dt.processStart,
+			&dt.processPID, &dt.processStart, &toolOpt,
 			&nextOffset, &nextTranscriptPath, &nextPromptAtStr,
 		)
 		if err != nil {
 			continue
+		}
+		if toolOpt.Valid {
+			dt.tool = toolOpt.String
 		}
 		dt.promptAt, _ = time.Parse(time.RFC3339Nano, promptAtStr)
 		if responseAtStr.Valid {
@@ -150,7 +156,16 @@ func reconcileTurn(conn *sql.DB, dt danglingTurn) error {
 		to = *dt.nextOffset
 	}
 
-	result, err := transcript.ExtractWindow(dt.transcriptPath, dt.promptLineOffset, to)
+	tool := dt.tool
+	if tool == "" {
+		tool = "claude-code"
+	}
+	p, ok := transcript.GetProvider(tool)
+	if !ok {
+		return fmt.Errorf("reconcile: unknown provider for tool %q", tool)
+	}
+
+	result, err := p.ExtractWindow(dt.transcriptPath, dt.promptLineOffset, to)
 	if err != nil {
 		return err
 	}
