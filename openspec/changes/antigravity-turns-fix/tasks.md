@@ -14,3 +14,9 @@
 ## 3. Provider 路徑探測邏輯實作
 
 - [x] 3.1 在 `internal/transcript/provider.go` 中修改 `AntigravityProvider.ResolvePath`，優先尋找 `~/.gemini/antigravity-cli/brain/...` 路徑，若不存在則 fallback 至舊的 `~/.gemini/antigravity/brain/...`
+- [x] 3.2 在 `internal/transcript/provider.go` 中覆寫 `AntigravityProvider.ExtractWindow` 與 `ExtractLastTurn` 直接呼叫 `ParseAntigravityLog`，確保單一 Turn 狀態可被完整提取。
+
+## 4. Reconcile 機制對零 Token 工具支援實作
+
+- [x] 4.1 在 `internal/reconcile/reconcile_test.go` 中新增測試 `TestReconcile_AntigravityZeroTokens`，驗證零 Token 的 Antigravity 能夠被順利 Reconcile。
+- [x] 4.2 在 `internal/reconcile/reconcile.go` 中修改 `reconcileTurn` 邏輯，排除對 `antigravity` 的零 Token 限制，使其能夠正確完成 Reconcile 更新。
