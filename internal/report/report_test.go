@@ -1118,6 +1118,79 @@ func TestReportModelUsages(t *testing.T) {
 	}
 }
 
+func TestQueryAllDimensionsDetailedTokens(t *testing.T) {
+	conn := openTestDB(t)
+	now := time.Now().UTC()
+
+	// Insert session with all fields
+	insertSessionFull(t, conn, "s1", "/proj/alpha", "claude-code", "gemini-2.5-flash", "main", "feature-x", now)
+
+	// Turn 1: 100 input, 50 output, 30 cache read, 20 cache create
+	insertTurnFull(t, conn, "s1", now.Add(-10*time.Minute), ptr(now.Add(-9*time.Minute)), 100, 50, 30, 20, ptr(0.01))
+
+	result, err := report.Query(conn, report.Options{Since: now.Add(-1 * time.Hour)})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+
+	// 1. Global result
+	if result.InputTokens != 100 || result.OutputTokens != 50 || result.CacheReadTokens != 30 || result.CacheCreationTokens != 20 {
+		t.Errorf("global tokens: input=%d, output=%d, cache_read=%d, cache_create=%d; want 100, 50, 30, 20",
+			result.InputTokens, result.OutputTokens, result.CacheReadTokens, result.CacheCreationTokens)
+	}
+
+	// 2. ByProject
+	if len(result.ByProject) != 1 {
+		t.Fatalf("ByProject len = %d, want 1", len(result.ByProject))
+	}
+	bp := result.ByProject[0]
+	if bp.InputTokens != 100 || bp.OutputTokens != 50 || bp.CacheReadTokens != 30 || bp.CacheCreationTokens != 20 {
+		t.Errorf("ByProject tokens: input=%d, output=%d, cache_read=%d, cache_create=%d; want 100, 50, 30, 20",
+			bp.InputTokens, bp.OutputTokens, bp.CacheReadTokens, bp.CacheCreationTokens)
+	}
+
+	// 3. ByAgent
+	if len(result.ByAgent) != 1 {
+		t.Fatalf("ByAgent len = %d, want 1", len(result.ByAgent))
+	}
+	ba := result.ByAgent[0]
+	if ba.InputTokens != 100 || ba.OutputTokens != 50 || ba.CacheReadTokens != 30 || ba.CacheCreationTokens != 20 {
+		t.Errorf("ByAgent tokens: input=%d, output=%d, cache_read=%d, cache_create=%d; want 100, 50, 30, 20",
+			ba.InputTokens, ba.OutputTokens, ba.CacheReadTokens, ba.CacheCreationTokens)
+	}
+
+	// 4. ByWorkItem (Groups)
+	if len(result.Groups) != 1 {
+		t.Fatalf("Groups len = %d, want 1", len(result.Groups))
+	}
+	bg := result.Groups[0]
+	if bg.InputTokens != 100 || bg.OutputTokens != 50 || bg.CacheReadTokens != 30 || bg.CacheCreationTokens != 20 {
+		t.Errorf("Groups tokens: input=%d, output=%d, cache_read=%d, cache_create=%d; want 100, 50, 30, 20",
+			bg.InputTokens, bg.OutputTokens, bg.CacheReadTokens, bg.CacheCreationTokens)
+	}
+
+	// 5. Sessions
+	if len(result.Sessions) != 1 {
+		t.Fatalf("Sessions len = %d, want 1", len(result.Sessions))
+	}
+	bs := result.Sessions[0]
+	if bs.InputTokens != 100 || bs.OutputTokens != 50 || bs.CacheReadTokens != 30 || bs.CacheCreationTokens != 20 {
+		t.Errorf("Sessions tokens: input=%d, output=%d, cache_read=%d, cache_create=%d; want 100, 50, 30, 20",
+			bs.InputTokens, bs.OutputTokens, bs.CacheReadTokens, bs.CacheCreationTokens)
+	}
+
+	// 6. Daily
+	if len(result.Daily) != 1 {
+		t.Fatalf("Daily len = %d, want 1", len(result.Daily))
+	}
+	bd := result.Daily[0]
+	if bd.InputTokens != 100 || bd.OutputTokens != 50 || bd.CacheReadTokens != 30 || bd.CacheCreationTokens != 20 {
+		t.Errorf("Daily tokens: input=%d, output=%d, cache_read=%d, cache_create=%d; want 100, 50, 30, 20",
+			bd.InputTokens, bd.OutputTokens, bd.CacheReadTokens, bd.CacheCreationTokens)
+	}
+}
+
+
 
 
 

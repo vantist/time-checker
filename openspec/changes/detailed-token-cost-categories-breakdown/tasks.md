@@ -1,7 +1,7 @@
 ## 1. Struct Expansion & SQL Aggregation (TDD)
 
 - [x] 1.1 Add CacheReadTokens and CacheCreationTokens to ProjectSummary, AgentSummary, GroupResult, SessionRow, and DailyStat structs in `internal/report/report.go`.
-- [ ] 1.2 Write a failing unit test in `internal/report/report_test.go` to verify that `Query` correctly populates the extended token fields (`CacheReadTokens` and `CacheCreationTokens`) on all query dimensions.
+- [x] 1.2 Write a failing unit test in `internal/report/report_test.go` to verify that `Query` correctly populates the extended token fields (`CacheReadTokens` and `CacheCreationTokens`) on all query dimensions.
 - [ ] 1.3 Update the aggregation logic in `Query` inside `internal/report/report.go` to group, aggregate, and populate the new cache token fields. Verify the test passes.
 
 ## 2. CLI FormatText Updates & Output File Flag (TDD)
