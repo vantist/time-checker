@@ -46,14 +46,7 @@ func SetupClaudeCode() error {
 		for event, hookVal := range ttHooks {
 			newEntries, _ := hookVal.([]interface{})
 			existing, _ := hooks[event].([]interface{})
-			var filtered []interface{}
-			for _, e := range existing {
-				em, _ := e.(map[string]interface{})
-				if em["_owner"] != "tt" {
-					filtered = append(filtered, e)
-				}
-			}
-			hooks[event] = append(filtered, newEntries...)
+			hooks[event] = mergeHookEntries(existing, newEntries)
 		}
 		settings["hooks"] = hooks
 		return settings, nil
@@ -128,14 +121,7 @@ func SetupAntigravity() error {
 
 		for event, newEntries := range targetHooks {
 			existing, _ := ttSection[event].([]interface{})
-			var filtered []interface{}
-			for _, e := range existing {
-				em, _ := e.(map[string]interface{})
-				if em["_owner"] != "tt" {
-					filtered = append(filtered, e)
-				}
-			}
-			ttSection[event] = append(filtered, newEntries...)
+			ttSection[event] = mergeHookEntries(existing, newEntries)
 		}
 		settings["tt"] = ttSection
 		return settings, nil
@@ -176,14 +162,7 @@ func SetupCodex() error {
 
 		for event, newEntries := range targetHooks {
 			existing, _ := hooksSection[event].([]interface{})
-			var filtered []interface{}
-			for _, e := range existing {
-				em, _ := e.(map[string]interface{})
-				if em["_owner"] != "tt" {
-					filtered = append(filtered, e)
-				}
-			}
-			hooksSection[event] = append(filtered, newEntries...)
+			hooksSection[event] = mergeHookEntries(existing, newEntries)
 		}
 		settings["hooks"] = hooksSection
 		return settings, nil
@@ -226,19 +205,25 @@ func SetupCopilot() error {
 
 		for event, newEntries := range targetHooks {
 			existing, _ := hooks[event].([]interface{})
-			var filtered []interface{}
-			for _, e := range existing {
-				em, _ := e.(map[string]interface{})
-				if em["_owner"] != "tt" {
-					filtered = append(filtered, e)
-				}
-			}
-			hooks[event] = append(filtered, newEntries...)
+			hooks[event] = mergeHookEntries(existing, newEntries)
 		}
 		settings["hooks"] = hooks
 		return settings, nil
 	}
 
 	return mergeHooksFile(configPath, "tt", updater)
+}
+
+// mergeHookEntries filters out any existing hook entries with _owner == "tt",
+// and appends the new entries to the remaining ones.
+func mergeHookEntries(existing []interface{}, newEntries []interface{}) []interface{} {
+	var filtered []interface{}
+	for _, e := range existing {
+		em, _ := e.(map[string]interface{})
+		if em["_owner"] != "tt" {
+			filtered = append(filtered, e)
+		}
+	}
+	return append(filtered, newEntries...)
 }
 
