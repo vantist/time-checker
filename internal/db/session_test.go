@@ -140,9 +140,13 @@ func TestUpsertSession_Resume(t *testing.T) {
 	}
 
 	var pid int64
-	conn.QueryRow("SELECT process_pid FROM sessions WHERE id = ?", origID).Scan(&pid)
+	var pstart int64
+	conn.QueryRow("SELECT process_pid, process_start FROM sessions WHERE id = ?", origID).Scan(&pid, &pstart)
 	if pid != 222 {
 		t.Errorf("process_pid not updated to new process: got %d, want 222", pid)
+	}
+	if pstart != 1700001000 {
+		t.Errorf("process_start not updated to new process: got %d, want 1700001000", pstart)
 	}
 }
 
