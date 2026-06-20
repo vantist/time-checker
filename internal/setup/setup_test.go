@@ -521,4 +521,192 @@ func TestSetupCodex(t *testing.T) {
 	}
 }
 
+func TestSetupCopilotFresh(t *testing.T) {
+	home := setupHome(t)
+
+	if err := setup.SetupCopilot(); err != nil {
+		t.Fatalf("SetupCopilot: %v", err)
+	}
+
+	configPath := filepath.Join(home, ".copilot", "hooks", "tt.json")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("tt.json not created: %v", err)
+	}
+
+	var config map[string]interface{}
+	if err := json.Unmarshal(data, &config); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+
+	// check version
+	ver, ok := config["version"].(float64)
+	if !ok || ver != 1 {
+		t.Errorf("version = %v, want 1", config["version"])
+	}
+
+	hooks, ok := config["hooks"].(map[string]interface{})
+	if !ok {
+		t.Fatal("hooks key missing or wrong type")
+	}
+
+	promptHooks, ok := hooks["userPromptSubmitted"].([]interface{})
+	if !ok || len(promptHooks) != 1 {
+		t.Fatalf("userPromptSubmitted missing or wrong size")
+	}
+	pMap := promptHooks[0].(map[string]interface{})
+	if pMap["_owner"] != "tt" || pMap["type"] != "command" || pMap["command"] != "tt record prompt --tool copilot-cli" {
+		t.Errorf("unexpected userPromptSubmitted hook: %v", pMap)
+	}
+
+	stopHooks, ok := hooks["agentStop"].([]interface{})
+	if !ok || len(stopHooks) != 1 {
+		t.Fatalf("agentStop missing or wrong size")
+	}
+	sMap := stopHooks[0].(map[string]interface{})
+	if sMap["_owner"] != "tt" || sMap["type"] != "command" || sMap["command"] != "tt record response --tool copilot-cli" {
+		t.Errorf("unexpected agentStop hook: %v", sMap)
+	}
+
+	// 1. Check directory permissions
+	dirInfo, err := os.Stat(filepath.Dir(configPath))
+	if err != nil {
+		t.Fatalf("failed to stat dir: %v", err)
+	}
+	if perm := dirInfo.Mode().Perm(); perm != 0o700 {
+		t.Errorf("dir permissions = %o, want %o", perm, 0o700)
+	}
+
+	// 2. Check file permissions
+	fileInfo, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("failed to stat file: %v", err)
+	}
+	if perm := fileInfo.Mode().Perm(); perm != 0o600 {
+		t.Errorf("file permissions = %o, want %o", perm, 0o600)
+	}
+}
+
+func TestSetupCopilotIdempotent(t *testing.T) {
+	home := setupHome(t)
+
+	if err := setup.SetupCopilot(); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if err := setup.SetupCopilot(); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+
+	configPath := filepath.Join(home, ".copilot", "hooks", "tt.json")
+	data, _ := os.ReadFile(configPath)
+	var config map[string]interface{}
+	json.Unmarshal(data, &config)
+
+	hooks := config["hooks"].(map[string]interface{})
+	for _, event := range []string{"userPromptSubmitted", "agentStop"} {
+		entries, _ := hooks[event].([]interface{})
+		ttCount := 0
+		for _, e := range entries {
+			em, _ := e.(map[string]interface{})
+			if em["_owner"] == "tt" {
+				ttCount++
+			}
+		}
+		if ttCount != 1 {
+			t.Errorf("event %s: want 1 tt entry, got %d", event, ttCount)
+		}
+	}
+}
+
+func TestSetupCopilotPreservesUserHooks(t *testing.T) {
+	home := setupHome(t)
+	copilotDir := filepath.Join(home, ".copilot", "hooks")
+	os.MkdirAll(copilotDir, 0o700)
+
+	existing := map[string]interface{}{
+		"version": float64(1),
+		"hooks": map[string]interface{}{
+			"userPromptSubmitted": []interface{}{
+				map[string]interface{}{
+					"type":    "command",
+					"command": "user-custom-copilot-hook",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(existing)
+	os.WriteFile(filepath.Join(copilotDir, "tt.json"), data, 0o600)
+
+	if err := setup.SetupCopilot(); err != nil {
+		t.Fatalf("SetupCopilot: %v", err)
+	}
+
+	data, _ = os.ReadFile(filepath.Join(copilotDir, "tt.json"))
+	var config map[string]interface{}
+	json.Unmarshal(data, &config)
+
+	hooks := config["hooks"].(map[string]interface{})
+	entries, _ := hooks["userPromptSubmitted"].([]interface{})
+	foundUser, foundTT := false, false
+	for _, e := range entries {
+		em, _ := e.(map[string]interface{})
+		if em["_owner"] == "tt" {
+			if em["command"] == "tt record prompt --tool copilot-cli" {
+				foundTT = true
+			}
+		} else if em["command"] == "user-custom-copilot-hook" {
+			foundUser = true
+		}
+	}
+	if !foundUser || !foundTT {
+		t.Errorf("User hook or TT hook missing: user=%v, tt=%v", foundUser, foundTT)
+	}
+}
+
+func TestSetupCopilotReplacesOldVersion(t *testing.T) {
+	home := setupHome(t)
+	copilotDir := filepath.Join(home, ".copilot", "hooks")
+	os.MkdirAll(copilotDir, 0o700)
+
+	old := map[string]interface{}{
+		"version": float64(1),
+		"hooks": map[string]interface{}{
+			"userPromptSubmitted": []interface{}{
+				map[string]interface{}{
+					"_owner":  "tt",
+					"type":    "command",
+					"command": "tt record prompt --old-args",
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(old)
+	os.WriteFile(filepath.Join(copilotDir, "tt.json"), data, 0o600)
+
+	if err := setup.SetupCopilot(); err != nil {
+		t.Fatalf("SetupCopilot: %v", err)
+	}
+
+	data, _ = os.ReadFile(filepath.Join(copilotDir, "tt.json"))
+	var config map[string]interface{}
+	json.Unmarshal(data, &config)
+
+	hooks := config["hooks"].(map[string]interface{})
+	entries, _ := hooks["userPromptSubmitted"].([]interface{})
+	ttCount := 0
+	for _, e := range entries {
+		em, _ := e.(map[string]interface{})
+		if em["_owner"] == "tt" {
+			ttCount++
+			if em["command"] == "tt record prompt --old-args" {
+				t.Error("old hook command still present after setup")
+			}
+		}
+	}
+	if ttCount != 1 {
+		t.Errorf("want 1 tt entry, got %d", ttCount)
+	}
+}
+
+
 
