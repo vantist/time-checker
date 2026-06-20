@@ -227,3 +227,37 @@ func mergeHookEntries(existing []interface{}, newEntries []interface{}) []interf
 	return append(filtered, newEntries...)
 }
 
+func isDirActive(dirName string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	path := filepath.Join(home, dirName)
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+// IsClaudeCodeActive checks if the ~/.claude directory exists.
+func IsClaudeCodeActive() bool {
+	return isDirActive(".claude")
+}
+
+// IsCopilotActive checks if the ~/.copilot directory exists.
+func IsCopilotActive() bool {
+	return isDirActive(".copilot")
+}
+
+// IsAntigravityActive checks if the ~/.gemini directory exists.
+func IsAntigravityActive() bool {
+	return isDirActive(".gemini")
+}
+
+// IsCodexActive checks if the ~/.codex directory exists.
+func IsCodexActive() bool {
+	return isDirActive(".codex")
+}
+
+
