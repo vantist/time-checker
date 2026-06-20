@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ func init() {
 	reportCmd.Flags().String("since", "7d", "Time range: 7d, 30d, or YYYY-MM-DD")
 	reportCmd.Flags().String("format", "text", "Output format: text or json")
 	reportCmd.Flags().Bool("by-work-item", false, "Group by work item")
+	reportCmd.Flags().StringP("output", "o", "", "Write report directly to a file")
 }
 
 var reportCmd = &cobra.Command{
@@ -28,6 +30,7 @@ var reportCmd = &cobra.Command{
 		project, _ := cmd.Flags().GetString("project")
 		format, _ := cmd.Flags().GetString("format")
 		byWorkItem, _ := cmd.Flags().GetBool("by-work-item")
+		outputFile, _ := cmd.Flags().GetString("output")
 
 		since, err := parseSince(sinceStr)
 		if err != nil {
@@ -52,15 +55,31 @@ var reportCmd = &cobra.Command{
 		}
 
 		if result.Empty {
-			fmt.Println("No data for the selected period.")
+			msg := "No data for the selected period.\n"
+			if outputFile != "" {
+				if err := os.WriteFile(outputFile, []byte(msg), 0600); err != nil {
+					return fmt.Errorf("failed to write output file: %w", err)
+				}
+			} else {
+				fmt.Print(msg)
+			}
 			return nil
 		}
 
+		var content string
 		switch format {
 		case "json":
-			fmt.Println(report.FormatJSON(result))
+			content = report.FormatJSON(result) + "\n"
 		default:
-			fmt.Print(report.FormatText(result))
+			content = report.FormatText(result)
+		}
+
+		if outputFile != "" {
+			if err := os.WriteFile(outputFile, []byte(content), 0600); err != nil {
+				return fmt.Errorf("failed to write output file: %w", err)
+			}
+		} else {
+			fmt.Print(content)
 		}
 		return nil
 	},
