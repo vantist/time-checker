@@ -56,18 +56,18 @@ func HasActiveSession(conn *sql.DB) bool {
 }
 
 type danglingTurn struct {
-	id                    int64
-	sessionID             string
-	transcriptPath        string
-	promptLineOffset      int
-	promptAt              time.Time
-	responseAt            *time.Time // non-nil when Stop hook already set it
-	processPID            int64
-	processStart          int64
-	tool                  string
-	nextOffset            *int
-	nextTranscriptPath    string
-	nextPromptAt          *time.Time
+	id                 int64
+	sessionID          string
+	transcriptPath     string
+	promptLineOffset   int
+	promptAt           time.Time
+	responseAt         *time.Time // non-nil when Stop hook already set it
+	processPID         int64
+	processStart       int64
+	tool               string
+	nextOffset         *int
+	nextTranscriptPath string
+	nextPromptAt       *time.Time
 }
 
 func reconcile(conn *sql.DB) {

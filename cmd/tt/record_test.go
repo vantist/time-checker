@@ -645,5 +645,3 @@ func TestRecordPrompt_Copilot(t *testing.T) {
 		t.Errorf("dbTranscriptPath = %q, want /mock/transcript.jsonl", dbTranscriptPath)
 	}
 }
-
-

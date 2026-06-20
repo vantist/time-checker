@@ -59,10 +59,7 @@ func (p *CopilotProvider) ExtractWindow(path string, fromOffset int, toOffset in
 	}
 	modelUsages := make(map[usageKey]ModelUsage)
 
-	lineIdx := 0
-	for sc.Scan() {
-		idx := lineIdx
-		lineIdx++
+	for idx := 0; sc.Scan(); idx++ {
 		if idx < fromOffset {
 			continue
 		}

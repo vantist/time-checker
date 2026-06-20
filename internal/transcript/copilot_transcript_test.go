@@ -111,4 +111,3 @@ func TestCopilotProvider_Subagents(t *testing.T) {
 		t.Errorf("unexpected subagent usage: %+v", subUsage)
 	}
 }
-

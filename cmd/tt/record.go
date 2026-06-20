@@ -75,7 +75,6 @@ var recordResponseCmd = &cobra.Command{
 	},
 }
 
-
 // hookPayload covers both Claude Code and Copilot CLI stdin formats.
 type hookPayload struct {
 	// Claude Code fields
@@ -88,7 +87,7 @@ type hookPayload struct {
 	// CamelCase fields (Copilot, Antigravity, etc.)
 	TranscriptPathCamel string `json:"transcriptPath"`
 	// Antigravity fields
-	ConversationID      string `json:"conversationId,omitempty"`
+	ConversationID string `json:"conversationId,omitempty"`
 }
 
 func readStdinJSON(tool string) (*hookPayload, error) {
@@ -314,12 +313,12 @@ func extractFromTranscript(path string) (tokensJSON, model string) {
 // marshalWindowResult converts a WindowResult to the JSON string format expected by RecordResponse.
 func marshalWindowResult(r transcript.WindowResult) string {
 	out, err := json.Marshal(map[string]int{
-		"input_tokens":              r.InputTokens(),
-		"output_tokens":             r.OutputTokens(),
-		"cache_read_tokens":         r.CacheReadTokens(),
-		"cache_creation_tokens":     r.CacheCreationTokens(),
-		"cache_creation_5m_tokens":  r.CacheCreate5m(),
-		"cache_creation_1h_tokens":  r.CacheCreate1h(),
+		"input_tokens":             r.InputTokens(),
+		"output_tokens":            r.OutputTokens(),
+		"cache_read_tokens":        r.CacheReadTokens(),
+		"cache_creation_tokens":    r.CacheCreationTokens(),
+		"cache_creation_5m_tokens": r.CacheCreate5m(),
+		"cache_creation_1h_tokens": r.CacheCreate1h(),
 	})
 	if err != nil {
 		return ""
