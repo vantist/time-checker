@@ -289,22 +289,14 @@ func repairSessions(db *sql.DB) {
 		return
 	}
 
-	type updateInfo struct {
-		id      string
-		project string
-		model   string
-		branch  string
-	}
-	var updates []updateInfo
-
+	var updates []sessInfo
 	for _, s := range sessList {
 		newProject := s.project
 		newModel := s.model
 		newBranch := s.branch
 
 		if s.project == "" || s.model == "" {
-			pathToRead, found := findExistingTranscriptPath(db, s.id)
-			if found {
+			if pathToRead, found := findExistingTranscriptPath(db, s.id); found {
 				if s.project == "" {
 					if homeDir, err := os.UserHomeDir(); err == nil {
 						newProject = resolveProjectPath(pathToRead, homeDir)
@@ -316,24 +308,18 @@ func repairSessions(db *sql.DB) {
 			}
 		}
 
-		if s.branch == "" {
-			if newProject != "" {
-				b := gitBranch(newProject)
-				if b != "" {
-					newBranch = b
-				} else {
-					newBranch = "-"
-				}
+		if s.branch == "" && newProject != "" {
+			newBranch = gitBranch(newProject)
+			if newBranch == "" {
+				newBranch = "-"
 			}
 		}
 
 		if newProject != s.project || newModel != s.model || newBranch != s.branch {
-			updates = append(updates, updateInfo{
-				id:      s.id,
-				project: newProject,
-				model:   newModel,
-				branch:  newBranch,
-			})
+			s.project = newProject
+			s.model = newModel
+			s.branch = newBranch
+			updates = append(updates, s)
 		}
 	}
 

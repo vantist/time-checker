@@ -785,38 +785,7 @@ func TestGitBranch(t *testing.T) {
 		t.Errorf("gitBranch(%q) = %q, want %q", tmpDir, got, "")
 	}
 
-	// Initialize git repo
-	cmd := exec.Command("git", "init")
-	cmd.Dir = tmpDir
-	if err := cmd.Run(); err != nil {
-		t.Fatalf("failed to init git: %v", err)
-	}
-
-	for _, args := range [][]string{
-		{"config", "user.email", "test@example.com"},
-		{"config", "user.name", "Test User"},
-		{"checkout", "-b", "test-branch"},
-	} {
-		c := exec.Command("git", args...)
-		c.Dir = tmpDir
-		_ = c.Run()
-	}
-
-	dummyFile := filepath.Join(tmpDir, "dummy")
-	if err := os.WriteFile(dummyFile, []byte("dummy"), 0644); err != nil {
-		t.Fatalf("write dummy file: %v", err)
-	}
-
-	for _, args := range [][]string{
-		{"add", "dummy"},
-		{"commit", "-m", "initial commit"},
-	} {
-		c := exec.Command("git", args...)
-		c.Dir = tmpDir
-		if err := c.Run(); err != nil {
-			t.Fatalf("git %v failed: %v", args, err)
-		}
-	}
+	initGitRepo(t, tmpDir, "test-branch")
 
 	got := gitBranch(tmpDir)
 	if got != "test-branch" {
@@ -833,33 +802,7 @@ func TestRepairSessions_Branch(t *testing.T) {
 	if err := os.MkdirAll(gitProject, 0755); err != nil {
 		t.Fatal(err)
 	}
-
-	// Initialize git and set branch
-	for _, args := range [][]string{
-		{"init"},
-		{"config", "user.email", "test@example.com"},
-		{"config", "user.name", "Test User"},
-		{"checkout", "-b", "test-repair-branch"},
-	} {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = gitProject
-		_ = cmd.Run()
-	}
-
-	dummyFile := filepath.Join(gitProject, "dummy")
-	if err := os.WriteFile(dummyFile, []byte("dummy"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	for _, args := range [][]string{
-		{"add", "dummy"},
-		{"commit", "-m", "initial"},
-	} {
-		cmd := exec.Command("git", args...)
-		cmd.Dir = gitProject
-		if err := cmd.Run(); err != nil {
-			t.Fatalf("git %v failed: %v", args, err)
-		}
-	}
+	initGitRepo(t, gitProject, "test-repair-branch")
 
 	// 2. Non-Git project setup
 	nonGitProject := filepath.Join(tempDir, "nongit-project")
@@ -910,6 +853,30 @@ func TestRepairSessions_Branch(t *testing.T) {
 	if branch2 != "-" {
 		t.Errorf("expected branch2 to be %q, got %q", "-", branch2)
 	}
+}
+
+func initGitRepo(t *testing.T, dir string, branch string) {
+	t.Helper()
+	runCmd := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("git %v failed: %v", args, err)
+		}
+	}
+
+	runCmd("init")
+	runCmd("config", "user.email", "test@example.com")
+	runCmd("config", "user.name", "Test User")
+	runCmd("checkout", "-b", branch)
+
+	dummyFile := filepath.Join(dir, "dummy")
+	if err := os.WriteFile(dummyFile, []byte("dummy"), 0644); err != nil {
+		t.Fatalf("write dummy file: %v", err)
+	}
+
+	runCmd("add", "dummy")
+	runCmd("commit", "-m", "initial commit")
 }
 
 
