@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -190,11 +191,41 @@ func resolveResponseInput(cmd *cobra.Command, conn *sql.DB) (sessionID, tokensJS
 
 	// If tokensJSON was not provided via flag, extract from transcript.
 	if tokensJSON == "" {
-		transcriptPath := ""
-		if stdin != nil {
-			transcriptPath = stdin.TranscriptPath
+		tool, _ := cmd.Flags().GetString("tool")
+		var stableID, dbTool string
+		conn.QueryRow("SELECT id, tool FROM sessions WHERE id=?", sessionID).Scan(&stableID, &dbTool)
+		if stableID == "" {
+			conn.QueryRow("SELECT id, tool FROM sessions WHERE conversation_id=?", sessionID).Scan(&stableID, &dbTool)
 		}
-		tokensJSON, model = resolveTokensFromTranscript(conn, sessionID, transcriptPath)
+		if (tool == "" || tool == "claude-code") && dbTool != "" {
+			tool = dbTool
+		}
+
+		if tool == "copilot-cli" {
+			path := filepath.Join("~", ".copilot", "session-state", sessionID, "events.jsonl")
+			res, err := transcript.ParseCopilotLog(path)
+			if err == nil {
+				tokensJSON = marshalWindowResult(res)
+				model = res.Model()
+			} else {
+				fmt.Fprintf(os.Stderr, "tt: failed to parse copilot log: %v\n", err)
+			}
+		} else if tool == "antigravity" {
+			path := filepath.Join("~", ".gemini", "antigravity", "brain", sessionID, ".system_generated", "logs", "transcript.jsonl")
+			res, err := transcript.ParseAntigravityLog(path)
+			if err == nil {
+				tokensJSON = marshalWindowResult(res)
+				model = res.Model()
+			} else {
+				fmt.Fprintf(os.Stderr, "tt: failed to parse antigravity log: %v\n", err)
+			}
+		} else {
+			transcriptPath := ""
+			if stdin != nil {
+				transcriptPath = stdin.TranscriptPath
+			}
+			tokensJSON, model = resolveTokensFromTranscript(conn, sessionID, transcriptPath)
+		}
 	}
 	return sessionID, tokensJSON, model, nil
 }

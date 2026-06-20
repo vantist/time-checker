@@ -6,6 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/user/tt/internal/db"
 )
 
 // TestResolvePromptInput_NoEnvVars: when PROCESS_PID and PROCESS_START are both
@@ -283,5 +286,226 @@ func TestResolvePromptInput_EnvVars_InvalidStart(t *testing.T) {
 	// Invalid env vars → fallback to os.Getppid(); env PID (12345) is NOT used.
 	if int(input.ProcessPID) != os.Getppid() {
 		t.Errorf("ProcessPID = %d, want %d (ppid fallback)", input.ProcessPID, os.Getppid())
+	}
+}
+
+func TestResolveResponseInput_Copilot(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	// Create events.jsonl under ~/.copilot/session-state/sess-copilot/
+	logDir := filepath.Join(tempHome, ".copilot", "session-state", "sess-copilot")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("mkdir events: %v", err)
+	}
+	logPath := filepath.Join(logDir, "events.jsonl")
+	content := `{"type":"session.shutdown","data":{"modelMetrics":{"gpt-5.4":{"usage":{"inputTokens":1000,"outputTokens":200,"cacheReadTokens":500,"cacheWriteTokens":100}}}}}` + "\n"
+	if err := os.WriteFile(logPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write events: %v", err)
+	}
+
+	dbDir := t.TempDir()
+	t.Setenv("TT_DB_PATH", filepath.Join(dbDir, "test.db"))
+	conn, err := db.Open()
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	defer conn.Close()
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("session", "", "")
+	cmd.Flags().String("tokens", "", "")
+	cmd.Flags().String("tool", "claude-code", "")
+
+	cmd.Flags().Set("session", "sess-copilot")
+	cmd.Flags().Set("tool", "copilot-cli")
+
+	sessionID, tokensJSON, model, err := resolveResponseInput(cmd, conn)
+	if err != nil {
+		t.Fatalf("resolveResponseInput: %v", err)
+	}
+
+	if sessionID != "sess-copilot" {
+		t.Errorf("sessionID = %q, want sess-copilot", sessionID)
+	}
+	if model != "gpt-5.4" {
+		t.Errorf("model = %q, want gpt-5.4", model)
+	}
+
+	var m map[string]int
+	if err := json.Unmarshal([]byte(tokensJSON), &m); err != nil {
+		t.Fatalf("unmarshal tokensJSON: %v, body: %q", err, tokensJSON)
+	}
+	if m["input_tokens"] != 1000 {
+		t.Errorf("input_tokens = %d, want 1000", m["input_tokens"])
+	}
+	if m["output_tokens"] != 200 {
+		t.Errorf("output_tokens = %d, want 200", m["output_tokens"])
+	}
+	if m["cache_read_tokens"] != 500 {
+		t.Errorf("cache_read_tokens = %d, want 500", m["cache_read_tokens"])
+	}
+	if m["cache_creation_tokens"] != 100 {
+		t.Errorf("cache_creation_tokens = %d, want 100", m["cache_creation_tokens"])
+	}
+}
+
+func TestResolveResponseInput_Antigravity(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	// Create transcript.jsonl under ~/.gemini/antigravity/brain/sess-anti/.system_generated/logs/
+	logDir := filepath.Join(tempHome, ".gemini", "antigravity", "brain", "sess-anti", ".system_generated", "logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("mkdir transcript: %v", err)
+	}
+	logPath := filepath.Join(logDir, "transcript.jsonl")
+	lines := []string{
+		`{"type":"user","isSidechain":false}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}}`,
+	}
+	f, err := os.Create(logPath)
+	if err != nil {
+		t.Fatalf("create transcript: %v", err)
+	}
+	for _, l := range lines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	dbDir := t.TempDir()
+	t.Setenv("TT_DB_PATH", filepath.Join(dbDir, "test.db"))
+	conn, err := db.Open()
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	defer conn.Close()
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("session", "", "")
+	cmd.Flags().String("tokens", "", "")
+	cmd.Flags().String("tool", "claude-code", "")
+
+	cmd.Flags().Set("session", "sess-anti")
+	cmd.Flags().Set("tool", "antigravity")
+
+	sessionID, tokensJSON, model, err := resolveResponseInput(cmd, conn)
+	if err != nil {
+		t.Fatalf("resolveResponseInput: %v", err)
+	}
+
+	if sessionID != "sess-anti" {
+		t.Errorf("sessionID = %q, want sess-anti", sessionID)
+	}
+	if model != "claude-sonnet-4-6" {
+		t.Errorf("model = %q, want claude-sonnet-4-6", model)
+	}
+
+	var m map[string]int
+	if err := json.Unmarshal([]byte(tokensJSON), &m); err != nil {
+		t.Fatalf("unmarshal tokensJSON: %v, body: %q", err, tokensJSON)
+	}
+	if m["input_tokens"] != 100 {
+		t.Errorf("input_tokens = %d, want 100", m["input_tokens"])
+	}
+	if m["output_tokens"] != 50 {
+		t.Errorf("output_tokens = %d, want 50", m["output_tokens"])
+	}
+}
+
+func TestRecordResponseCmd_Integration(t *testing.T) {
+	tempHome := t.TempDir()
+	t.Setenv("HOME", tempHome)
+
+	// Create events.jsonl under ~/.copilot/session-state/sess-int-test/
+	logDir := filepath.Join(tempHome, ".copilot", "session-state", "sess-int-test")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		t.Fatalf("mkdir events: %v", err)
+	}
+	logPath := filepath.Join(logDir, "events.jsonl")
+	content := `{"type":"session.shutdown","data":{"modelMetrics":{"gpt-5.4":{"usage":{"inputTokens":1000,"outputTokens":200,"cacheReadTokens":500,"cacheWriteTokens":100}}}}}` + "\n"
+	if err := os.WriteFile(logPath, []byte(content), 0644); err != nil {
+		t.Fatalf("write events: %v", err)
+	}
+
+	dbDir := t.TempDir()
+	t.Setenv("TT_DB_PATH", filepath.Join(dbDir, "test.db"))
+	conn, err := db.Open()
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+
+	// Seed session and turn
+	_, err = conn.Exec(`
+		INSERT INTO sessions (id, project, tool, model, branch, started_at)
+		VALUES ('sess-int-test', '/proj', 'copilot-cli', '', 'main', '2026-06-20T00:00:00Z')
+	`)
+	if err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	_, err = conn.Exec(`
+		INSERT INTO turns (session_id, prompt_at)
+		VALUES ('sess-int-test', '2026-06-20T00:00:01Z')
+	`)
+	if err != nil {
+		t.Fatalf("seed turn: %v", err)
+	}
+	conn.Close() // close connection because recordResponseCmd will open it again
+
+	// Setup and run the response command
+	recordResponseCmd.Flags().Set("session", "sess-int-test")
+	recordResponseCmd.Flags().Set("tool", "copilot-cli")
+	recordResponseCmd.Flags().Set("tokens", "")
+
+	err = recordResponseCmd.RunE(recordResponseCmd, nil)
+	if err != nil {
+		t.Errorf("recordResponseCmd returned error: %v", err)
+	}
+
+	// Reopen DB and verify values
+	conn, err = db.Open()
+	if err != nil {
+		t.Fatalf("reopen DB: %v", err)
+	}
+	defer conn.Close()
+
+	var dbModel string
+	conn.QueryRow("SELECT model FROM sessions WHERE id='sess-int-test'").Scan(&dbModel)
+	if dbModel != "gpt-5.4" {
+		t.Errorf("sessions.model = %q, want gpt-5.4", dbModel)
+	}
+
+	var input, output, cacheRead, cacheCreate int
+	var cost float64
+	var responseAt string
+	err = conn.QueryRow(`
+		SELECT input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, estimated_cost_usd, response_at
+		FROM turns WHERE session_id='sess-int-test'
+	`).Scan(&input, &output, &cacheRead, &cacheCreate, &cost, &responseAt)
+	if err != nil {
+		t.Fatalf("query turn: %v", err)
+	}
+
+	if input != 1000 || output != 200 || cacheRead != 500 || cacheCreate != 100 {
+		t.Errorf("turn tokens: input=%d output=%d read=%d create=%d", input, output, cacheRead, cacheCreate)
+	}
+
+	// pricing for gpt-5.4: input=$5.00/MTok, output=$15.00/MTok, cacheRead=$0.50/MTok, cacheCreate=$6.25/MTok
+	// cost = 1000/1e6*5.00 + 200/1e6*15.00 + 500/1e6*0.50 + 100/1e6*6.25
+	//      = 0.005 + 0.003 + 0.00025 + 0.000625 = 0.008875
+	const expectedCost = 0.008875
+	if cost < expectedCost-0.000001 || cost > expectedCost+0.000001 {
+		t.Errorf("estimated_cost_usd = %f, want ~%f", cost, expectedCost)
+	}
+
+	if responseAt == "" {
+		t.Error("response_at was not populated")
+	}
+
+	// Test silent error handling (no error returned, exit 0 equivalent)
+	recordResponseCmd.Flags().Set("session", "non-existent-session-should-not-cause-command-error")
+	err = recordResponseCmd.RunE(recordResponseCmd, nil)
+	if err != nil {
+		t.Errorf("expected command to exit silently with nil error even on db mismatch, got: %v", err)
 	}
 }
