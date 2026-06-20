@@ -80,6 +80,42 @@ func SetupClaudeCode() error {
 	return os.WriteFile(settingsPath, out, 0o600)
 }
 
+func mergeHooksFile(configPath string, defaultOwner string, updater func(map[string]interface{}) (map[string]interface{}, error)) error {
+	dir := filepath.Dir(configPath)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+
+	var m map[string]interface{}
+	data, err := os.ReadFile(configPath)
+	if errors.Is(err, os.ErrNotExist) {
+		m = map[string]interface{}{}
+	} else if err != nil {
+		return err
+	} else {
+		if len(data) == 0 {
+			m = map[string]interface{}{}
+		} else {
+			if err := json.Unmarshal(data, &m); err != nil {
+				return fmt.Errorf("config is corrupt: %w", err)
+			}
+		}
+	}
+
+	updated, err := updater(m)
+	if err != nil {
+		return err
+	}
+
+	out, err := json.MarshalIndent(updated, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(configPath, out, 0o600)
+}
+
+
+
 const CopilotInstructions = `To set up GitHub Copilot CLI hooks, add the following to ~/.copilot/settings.json:
 
 {

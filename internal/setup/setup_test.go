@@ -259,3 +259,71 @@ func TestSetupClaudeCodePreservesExistingHooks(t *testing.T) {
 		t.Error("tt UserPromptSubmit hook not added")
 	}
 }
+
+func TestMergeHooksFile_CreatesDirAndFileWithCorrectPermissions(t *testing.T) {
+	tmp := t.TempDir()
+	subDir := filepath.Join(tmp, "nested_dir")
+	configPath := filepath.Join(subDir, "config.json")
+
+	updater := func(m map[string]interface{}) (map[string]interface{}, error) {
+		m["key"] = "value"
+		return m, nil
+	}
+
+	err := setup.MergeHooksFile(configPath, "tt", updater)
+	if err != nil {
+		t.Fatalf("MergeHooksFile failed: %v", err)
+	}
+
+	// 1. Check directory permissions
+	dirInfo, err := os.Stat(subDir)
+	if err != nil {
+		t.Fatalf("failed to stat subDir: %v", err)
+	}
+	// On Unix/Mac, check the mode permissions. Mask with 0o777 to only keep standard permission bits.
+	if perm := dirInfo.Mode().Perm(); perm != 0o700 {
+		t.Errorf("subDir permissions = %o, want %o", perm, 0o700)
+	}
+
+	// 2. Check file permissions
+	fileInfo, err := os.Stat(configPath)
+	if err != nil {
+		t.Fatalf("failed to stat configPath: %v", err)
+	}
+	if perm := fileInfo.Mode().Perm(); perm != 0o600 {
+		t.Errorf("configPath permissions = %o, want %o", perm, 0o600)
+	}
+
+	// 3. Check content
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read configPath: %v", err)
+	}
+	var res map[string]interface{}
+	if err := json.Unmarshal(data, &res); err != nil {
+		t.Fatalf("unmarshal config: %v", err)
+	}
+	if val := res["key"]; val != "value" {
+		t.Errorf("config key = %v, want 'value'", val)
+	}
+}
+
+func TestMergeHooksFile_HandlesCorruptJSON(t *testing.T) {
+	tmp := t.TempDir()
+	configPath := filepath.Join(tmp, "config.json")
+
+	// Pre-populate with corrupt JSON
+	if err := os.WriteFile(configPath, []byte("{invalid json"), 0o600); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+
+	updater := func(m map[string]interface{}) (map[string]interface{}, error) {
+		return m, nil
+	}
+
+	err := setup.MergeHooksFile(configPath, "tt", updater)
+	if err == nil {
+		t.Error("expected error for corrupt JSON, got nil")
+	}
+}
+
