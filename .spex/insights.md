@@ -246,3 +246,20 @@
 
 ---
 
+## 2026-06-20 — setup-cmd-improvements [spex-apply]
+
+**Promote candidates:**
+
+- [ ] Struct-driven declarative flag and behavior definition for CLI commands
+  > **Why**: Hardcoding nested if-else blocks for each flag value makes CLI commands scale poorly and duplicate registration/dispatch boilerplate. Encapsulating flag names, descriptions, detectors, and installers in a list of configurations simplifies command registration and RunE methods.
+  > **How to apply**: When a command manages multiple tool setups or modules, use a struct-driven metadata slice to dynamically register and dispatch behavior in loops.
+
+- [ ] Generic hook setup/updater helpers
+  > **Why**: AI tool setups repeat similar operations (obtaining user home, reading JSON files, validating structures, calling merge functions, and writing with secure permissions). Extracting common setup flow to helpers like `setupToolHooks` and `updateSection` avoids duplicate operations and code drift.
+  > **How to apply**: Use unified path-building and json-updating helper functions inside internal/setup rather than writing separate home directory resolution and file merge logic for each tool.
+
+**Plan deviations:** none
+
+---
+
+
