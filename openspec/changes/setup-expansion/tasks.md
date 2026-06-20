@@ -14,4 +14,4 @@
 
 - [x] 3.1 在 `cmd/tt/record_test.go` 中為 stdin JSON 包含 `conversationId` 與 `transcriptPath` 的解析對照與邏輯增加單元測試
 - [x] 3.2 在 `cmd/tt/record.go` 的 `hookPayload` 中加入對應欄位，並在 `readStdinJSON()` 中進行正規化，確保測試通過
-- [ ] 3.3 更新 `design.md` 中的 Hook 整合與 Payload 欄位規格說明
+- [x] 3.3 更新 `design.md` 中的 Hook 整合與 Payload 欄位規格說明
