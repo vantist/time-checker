@@ -500,3 +500,66 @@ func TestReconcile_AntigravityZeroTokens(t *testing.T) {
 		t.Error("expected subagent_tokens_settled to be true")
 	}
 }
+
+// TestReconcile_LogPathSwitch: when nextTranscriptPath != transcriptPath,
+// reconcile sets to = -1 (reads to EOF of old transcript).
+func TestReconcile_LogPathSwitch(t *testing.T) {
+	db := newTestDB(t)
+	dir := t.TempDir()
+
+	insertSession(t, db, "sess-switch", 0, 0)
+
+	// Old transcript with 4 lines
+	oldPath := filepath.Join(dir, "transcript_old.jsonl")
+	oldLines := []string{
+		`{"type":"user","isSidechain":false}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":10,"output_tokens":5}}}`,
+		`{"type":"user","isSidechain":false}`,
+		`{"type":"assistant","isSidechain":false,"message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":20,"output_tokens":10}}}`,
+	}
+	f, _ := os.Create(oldPath)
+	for _, l := range oldLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	newPath := filepath.Join(dir, "transcript_new.jsonl")
+
+	// Insert dangling turn with nextTranscriptPath different from oldPath
+	// next_offset is 2, but because nextTranscriptPath != transcript_path,
+	// it should read to EOF (-1) and capture both assistant runs (10 + 20 = 30 input tokens).
+	promptAt := time.Now().Add(-10 * time.Minute)
+	res, err := db.Exec(
+		`INSERT INTO turns (session_id, prompt_at, transcript_path, prompt_line_offset) VALUES (?, ?, ?, ?)`,
+		"sess-switch", promptAt.UTC().Format(time.RFC3339Nano), oldPath, 0,
+	)
+	if err != nil {
+		t.Fatalf("insert turn: %v", err)
+	}
+	turnID, _ := res.LastInsertId()
+
+	// We need another turn in the same session to trigger the nextOffset / nextTranscriptPath selection in query.
+	// The query in reconcile.go selects the next turn's offset and path.
+	_, err = db.Exec(
+		`INSERT INTO turns (session_id, prompt_at, transcript_path, prompt_line_offset) VALUES (?, ?, ?, ?)`,
+		"sess-switch", time.Now().Add(-5 * time.Minute).UTC().Format(time.RFC3339Nano), newPath, 2,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reconcile(db)
+
+	var inputTokens sql.NullInt64
+	err = db.QueryRow("SELECT input_tokens FROM turns WHERE id=?", turnID).Scan(&inputTokens)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !inputTokens.Valid {
+		t.Fatal("expected input_tokens to be valid")
+	}
+	if inputTokens.Int64 != 30 {
+		t.Errorf("expected 30 input tokens, got %d", inputTokens.Int64)
+	}
+}
