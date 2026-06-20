@@ -1,5 +1,21 @@
 # Spex Insights
 
+## 2026-06-21 — antigravity-session-recovery [spex-apply]
+
+**Promote candidates:**
+
+- [ ] timezone-aware datetime calculations directly in SQLite
+  > **Why**: Comparing time differences inside Go loops requires scanning rows, fetching timestamps, and parsing them in Go. Offloading this directly to SQLite using datetime functions (e.g. strftime) makes code much simpler and faster.
+  > **How to apply**: For time delta comparisons on database records, implement timezone-aware datetime calculations directly inside the query where possible.
+
+- [ ] pointer-to-pointer scanning for NULL columns in database/sql
+  > **Why**: Using wrapper structs like sql.NullString requires checking validity flags. Scanning NULLable columns into pointer-to-pointer variables (e.g. **time.Time or **string) automatically handles NULL states cleanly without boilerplate.
+  > **How to apply**: Pass pointer variables matching **T to Scan() for NULLable columns.
+
+**Plan deviations**: none
+
+---
+
 ## 2026-06-21 — antigravity-session-fix [spex-apply]
 
 **Promote candidates:**
