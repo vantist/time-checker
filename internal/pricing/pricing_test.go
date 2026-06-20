@@ -98,3 +98,50 @@ func TestCalculateGpt5Mini(t *testing.T) {
 	got := pricing.Calculate("gpt-5-mini", 1_000_000, 0, 0, 0, 0, 0)
 	assertCost(t, got, 0.15)
 }
+
+func TestCalculateSuffixNormalization(t *testing.T) {
+	// Test normalization with existing base models in table
+	assertCost(t, pricing.Calculate("claude-haiku-4-5-latest", 1_000_000, 0, 0, 0, 0, 0), 1.00)
+	assertCost(t, pricing.Calculate("claude-haiku-4-5-preview", 1_000_000, 0, 0, 0, 0, 0), 1.00)
+	assertCost(t, pricing.Calculate("claude-haiku-4-5-exp", 1_000_000, 0, 0, 0, 0, 0), 1.00)
+	assertCost(t, pricing.Calculate("claude-haiku-4-5-002", 1_000_000, 0, 0, 0, 0, 0), 1.00)
+
+	// Test normalization with 2026 models (will fail because suffix normalize is missing AND base models are not in table yet)
+	assertCost(t, pricing.Calculate("gemini-1.5-pro-002", 1_000_000, 0, 0, 0, 0, 0), 1.25)
+	assertCost(t, pricing.Calculate("claude-3-5-sonnet-latest", 1_000_000, 0, 0, 0, 0, 0), 3.00)
+	assertCost(t, pricing.Calculate("gpt-4o-preview", 1_000_000, 0, 0, 0, 0, 0), 2.50)
+}
+
+func TestCalculate2026Models(t *testing.T) {
+	// gemini-3.5-flash: input=$1.50/MTok
+	assertCost(t, pricing.Calculate("gemini-3.5-flash", 1_000_000, 0, 0, 0, 0, 0), 1.50)
+
+	// claude-3-5-sonnet: input=$3.00/MTok, cache write=$3.75/MTok
+	// input 1,000,000 tokens, cache write 1,000,000 tokens, cost = 3.00 + 3.75 = 6.75
+	assertCost(t, pricing.Calculate("claude-3-5-sonnet", 1_000_000, 0, 0, 1_000_000, 0, 0), 6.75)
+
+	// o1: input=$15.00/MTok, output=$60.00/MTok
+	// input 1,000,000 tokens, output 500,000 tokens, cost = 15.00 + 30.00 = 45.00
+	assertCost(t, pricing.Calculate("o1", 1_000_000, 500_000, 0, 0, 0, 0), 45.00)
+
+	// gpt-4o: input=$2.50/MTok, cache read=$1.25/MTok
+	// input 1,000,000 tokens, cache read 2,000,000 tokens, cost = 2.50 + 2.50 = 5.00
+	assertCost(t, pricing.Calculate("gpt-4o", 1_000_000, 0, 2_000_000, 0, 0, 0), 5.00)
+
+	// grok-code-fast-1: input=$1.00/MTok, output=$2.00/MTok
+	assertCost(t, pricing.Calculate("grok-code-fast-1", 1_000_000, 1_000_000, 0, 0, 0, 0), 3.00)
+
+	// mai-code-1-flash: input=$0.75/MTok, output=$4.50/MTok
+	assertCost(t, pricing.Calculate("mai-code-1-flash", 2_000_000, 1_000_000, 0, 0, 0, 0), 6.00)
+
+	// raptor-mini: input=$0.25/MTok, output=$2.00/MTok
+	assertCost(t, pricing.Calculate("raptor-mini", 4_000_000, 1_000_000, 0, 0, 0, 0), 3.00)
+
+	// gemini-2.5-flash-lite: input=$0.10/MTok, output=$0.40/MTok
+	assertCost(t, pricing.Calculate("gemini-2.5-flash-lite", 10_000_000, 5_000_000, 0, 0, 0, 0), 3.00)
+
+	// claude-fable-5: input=$10.00/MTok, cache read=$1.00/MTok
+	assertCost(t, pricing.Calculate("claude-fable-5", 1_000_000, 0, 1_000_000, 0, 0, 0), 11.00)
+}
+
+
