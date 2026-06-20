@@ -323,3 +323,53 @@ func TestRecordPrompt_AntigravityDeduplication(t *testing.T) {
 		t.Errorf("expected 2 turns after third prompt, got %d", count)
 	}
 }
+
+func TestRecordPrompt_AntigravityPreemption(t *testing.T) {
+	conn := openTestDB(t)
+
+	input := recorder.PromptInput{
+		SessionID: "sess-preempt",
+		Project:   "/home/user/myproject",
+		Tool:      "antigravity",
+		Model:     "gemini-3.5-flash",
+	}
+
+	// 1. Record first prompt
+	if err := recorder.RecordPrompt(conn, input); err != nil {
+		t.Fatalf("first RecordPrompt: %v", err)
+	}
+
+	// 2. Modify that active turn to make it old (20 minutes ago)
+	oldTime := time.Now().UTC().Add(-20 * time.Minute).Format(time.RFC3339)
+	_, err := conn.Exec("UPDATE turns SET prompt_at = ? WHERE session_id = 'sess-preempt'", oldTime)
+	if err != nil {
+		t.Fatalf("failed to age turn: %v", err)
+	}
+
+	// 3. Record second prompt (should preempt and create a new turn because the old one is older than 15 minutes)
+	if err := recorder.RecordPrompt(conn, input); err != nil {
+		t.Fatalf("second RecordPrompt: %v", err)
+	}
+
+	// Verify that the first turn was updated to set response_at to non-null
+	var openTurnsCount int
+	err = conn.QueryRow("SELECT COUNT(*) FROM turns WHERE session_id='sess-preempt' AND response_at IS NULL").Scan(&openTurnsCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first turn should have response_at updated to now, so only the second turn remains active (response_at IS NULL)
+	if openTurnsCount != 1 {
+		t.Errorf("expected 1 active turn, got %d", openTurnsCount)
+	}
+
+	// Verify total turns under this session is 2
+	var totalTurnsCount int
+	err = conn.QueryRow("SELECT COUNT(*) FROM turns WHERE session_id='sess-preempt'").Scan(&totalTurnsCount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if totalTurnsCount != 2 {
+		t.Errorf("expected 2 total turns, got %d", totalTurnsCount)
+	}
+}
+

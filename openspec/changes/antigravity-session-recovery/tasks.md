@@ -13,9 +13,9 @@
 
 ## 3. RecordPrompt 自動搶佔逾期懸空 Turn
 
-- [ ] 3.1 在 `internal/recorder/recorder_test.go` 中寫入對 `RecordPrompt` 在遇到超過 15 分鐘 active turn 時強制更新/搶佔的測試案例。測試目前應失敗。
-- [ ] 3.2 在 `internal/recorder/recorder.go` 中實作 `RecordPrompt` 針對 `antigravity` 工具的逾時 active turn 判斷，並執行 SQL `UPDATE` 自動關閉該懸空 turn。
-- [ ] 3.3 執行測試並驗證 `RecordPrompt` 搶佔測試通過。
+- [x] 3.1 在 `internal/recorder/recorder_test.go` 中寫入對 `RecordPrompt` 在遇到超過 15 分鐘 active turn 時強制更新/搶佔的測試案例。測試目前應失敗。
+- [x] 3.2 在 `internal/recorder/recorder.go` 中實作 `RecordPrompt` 針對 `antigravity` 工具的逾時 active turn 判斷，並執行 SQL `UPDATE` 自動關閉該懸空 turn。
+- [x] 3.3 執行測試並驗證 `RecordPrompt` 搶佔測試通過。
 
 ## 4. 整體驗證
 
