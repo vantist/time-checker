@@ -242,18 +242,3 @@ func SetupCopilot() error {
 	return mergeHooksFile(configPath, "tt", updater)
 }
 
-const CopilotInstructions = `To set up GitHub Copilot CLI hooks, add the following to ~/.copilot/settings.json:
-
-{
-  "hooks": {
-    "userPromptSubmitted": "tt record prompt --tool copilot-cli",
-    "agentStop": "tt record response --tool copilot-cli"
-  }
-}
-
-Events:
-  userPromptSubmitted  → tt record prompt --tool copilot-cli
-  agentStop            → tt record response --tool copilot-cli
-
-Note: Token data is not available in Copilot CLI hooks; token fields will be NULL.
-`
