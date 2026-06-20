@@ -192,6 +192,55 @@ func SetupCodex() error {
 	return mergeHooksFile(configPath, "tt", updater)
 }
 
+func SetupCopilot() error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(home, ".copilot", "hooks", "tt.json")
+
+	updater := func(settings map[string]interface{}) (map[string]interface{}, error) {
+		settings["version"] = 1
+
+		hooks, _ := settings["hooks"].(map[string]interface{})
+		if hooks == nil {
+			hooks = map[string]interface{}{}
+		}
+
+		targetHooks := map[string][]interface{}{
+			"userPromptSubmitted": {
+				map[string]interface{}{
+					"_owner":  "tt",
+					"type":    "command",
+					"command": "tt record prompt --tool copilot-cli",
+				},
+			},
+			"agentStop": {
+				map[string]interface{}{
+					"_owner":  "tt",
+					"type":    "command",
+					"command": "tt record response --tool copilot-cli",
+				},
+			},
+		}
+
+		for event, newEntries := range targetHooks {
+			existing, _ := hooks[event].([]interface{})
+			var filtered []interface{}
+			for _, e := range existing {
+				em, _ := e.(map[string]interface{})
+				if em["_owner"] != "tt" {
+					filtered = append(filtered, e)
+				}
+			}
+			hooks[event] = append(filtered, newEntries...)
+		}
+		settings["hooks"] = hooks
+		return settings, nil
+	}
+
+	return mergeHooksFile(configPath, "tt", updater)
+}
 
 const CopilotInstructions = `To set up GitHub Copilot CLI hooks, add the following to ~/.copilot/settings.json:
 

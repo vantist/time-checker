@@ -4,8 +4,8 @@
 
 ## 2. 實作核心邏輯
 
-- [ ] 2.1 在 `internal/setup/setup.go` 中實作 `SetupCopilot() error`，實作自動將 Copilot CLI hook 合併寫入 `~/.copilot/hooks/tt.json`。
-- [ ] 2.2 執行並通過 `TestSetupCopilot` 與 `TestSetupClaudeCode` 等 `internal/setup` 的所有測試。
+- [x] 2.1 在 `internal/setup/setup.go` 中實作 `SetupCopilot() error`，實作自動將 Copilot CLI hook 合併寫入 `~/.copilot/hooks/tt.json`。
+- [x] 2.2 執行並通過 `TestSetupCopilot` 與 `TestSetupClaudeCode` 等 `internal/setup` 的所有測試。
 
 ## 3. CLI 整合與驗證
 
