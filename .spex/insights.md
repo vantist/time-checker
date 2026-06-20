@@ -178,3 +178,18 @@
 **Plan deviations:** none
 
 ---
+
+## 2026-06-20 — token-calculation-research [spex-apply]
+
+**Promote candidates:**
+- [ ] Deduplicate Home Directory Expansion in CLI commands
+  > **Why**: When referencing relative home directory paths (like `~/.copilot/...` or `~/.gemini/...`) in Go's file operations, tilde expansion does not happen automatically. Having a shared helper `expandHome` in `extract.go` avoids duplicating home-directory resolution logic across multiple log parsers.
+  > **How to apply**: Ensure any tilde-prefixed path is wrapped in `expandHome` before calling `os.Open` or similar OS file calls.
+- [ ] pricing test assertCost helper
+  > **Why**: The pricing test had repeated `if got == nil { t.Fatal... }` check blocks. Extracting this to `assertCost(t, got, want)` helper makes tests cleaner and easier to read.
+  > **How to apply**: When writing table-driven or repeated assertions, extract common assertion sequences to clean helper functions.
+
+**Plan deviations:** none
+
+---
+
