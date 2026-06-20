@@ -5,8 +5,8 @@
 
 ## 2. 定義 LogProvider 介面與 Registry
 
-- [ ] 2.1 建立 `internal/transcript/provider.go`，定義 `LogProvider` 介面及 `Register`/`GetProvider` 機制
-- [ ] 2.2 撰寫測試驗證 Provider Registry 能正確註冊與取得對應的 Provider
+- [x] 2.1 建立 `internal/transcript/provider.go`，定義 `LogProvider` 介面及 `Register`/`GetProvider` 機制
+- [x] 2.2 撰寫測試驗證 Provider Registry 能正確註冊與取得對應的 Provider
 
 ## 3. 實作 JSONL 共享 Provider (JSONLProvider)
 
