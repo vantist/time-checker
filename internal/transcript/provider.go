@@ -84,4 +84,5 @@ func init() {
 	Register("claude-code", &ClaudeProvider{JSONLProvider{SupportsSub: true}})
 	Register("antigravity", &AntigravityProvider{JSONLProvider{SupportsSub: true}})
 	Register("codex", &CodexProvider{JSONLProvider{SupportsSub: false}})
+	Register("copilot-cli", &CopilotProvider{})
 }

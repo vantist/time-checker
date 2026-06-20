@@ -54,3 +54,61 @@ func TestParseCopilotLog_FileNotFound(t *testing.T) {
 		t.Error("expected error for non-existent file, got nil")
 	}
 }
+
+func TestCopilotProvider_Subagents(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "events.jsonl")
+
+	lines := []string{
+		`{"type":"session.start","data":{}}`,
+		`{"type":"session.shutdown","data":{"mainModel":"gpt-5.4","modelMetrics":{"gpt-5.4":{"usage":{"inputTokens":1000,"outputTokens":200}},"gpt-5-mini":{"usage":{"inputTokens":500,"outputTokens":100}}}}}`,
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+	for _, line := range lines {
+		f.WriteString(line + "\n")
+	}
+	f.Close()
+
+	// Get provider
+	p, ok := transcript.GetProvider("copilot-cli")
+	if !ok {
+		t.Fatal("expected copilot-cli provider to be registered")
+	}
+
+	res, err := p.ExtractWindow(path, 0, -1)
+	if err != nil {
+		t.Fatalf("ExtractWindow failed: %v", err)
+	}
+
+	if len(res.Usages) != 2 {
+		t.Fatalf("expected 2 usages, got %d: %+v", len(res.Usages), res.Usages)
+	}
+
+	var mainUsage, subUsage transcript.ModelUsage
+	for _, u := range res.Usages {
+		if u.Model == "gpt-5.4" {
+			mainUsage = u
+		} else if u.Model == "gpt-5-mini" {
+			subUsage = u
+		}
+	}
+
+	if mainUsage.IsSubagent {
+		t.Error("expected main model gpt-5.4 to have IsSubagent = false")
+	}
+	if mainUsage.InputTokens != 1000 || mainUsage.OutputTokens != 200 {
+		t.Errorf("unexpected main usage: %+v", mainUsage)
+	}
+
+	if !subUsage.IsSubagent {
+		t.Error("expected subagent model gpt-5-mini to have IsSubagent = true")
+	}
+	if subUsage.InputTokens != 500 || subUsage.OutputTokens != 100 {
+		t.Errorf("unexpected subagent usage: %+v", subUsage)
+	}
+}
+
