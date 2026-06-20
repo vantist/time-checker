@@ -86,9 +86,10 @@ type hookPayload struct {
 	TranscriptPath string `json:"transcript_path"`
 	// Copilot CLI fields
 	CopilotSessionID string `json:"sessionId"`
+	// CamelCase fields (Copilot, Antigravity, etc.)
+	TranscriptPathCamel string `json:"transcriptPath"`
 	// Antigravity fields
-	ConversationID            string `json:"conversationId,omitempty"`
-	AntigravityTranscriptPath string `json:"transcriptPath,omitempty"`
+	ConversationID      string `json:"conversationId,omitempty"`
 }
 
 func readStdinJSON(tool string) (*hookPayload, error) {
@@ -108,13 +109,14 @@ func readStdinJSON(tool string) (*hookPayload, error) {
 	if p.SessionID == "" && p.CopilotSessionID != "" {
 		p.SessionID = p.CopilotSessionID
 	}
+	// normalise transcriptPath
+	if p.TranscriptPath == "" && p.TranscriptPathCamel != "" {
+		p.TranscriptPath = p.TranscriptPathCamel
+	}
 	// normalise Antigravity fields
 	if tool == "antigravity" {
 		if p.SessionID == "" && p.ConversationID != "" {
 			p.SessionID = p.ConversationID
-		}
-		if p.TranscriptPath == "" && p.AntigravityTranscriptPath != "" {
-			p.TranscriptPath = p.AntigravityTranscriptPath
 		}
 	}
 	return &p, nil

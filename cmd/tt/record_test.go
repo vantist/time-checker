@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/user/tt/internal/db"
+	"github.com/user/tt/internal/recorder"
 )
 
 // TestResolvePromptInput_NoEnvVars: when PROCESS_PID and PROCESS_START are both
@@ -569,4 +570,80 @@ func TestReadStdinJSON_Codex(t *testing.T) {
 		t.Errorf("TranscriptPath = %q, want %q", payload.TranscriptPath, "/path/to/codex.jsonl")
 	}
 }
+
+func TestRecordPrompt_Copilot(t *testing.T) {
+	// Mock Stdin
+	oldStdin := os.Stdin
+	defer func() { os.Stdin = oldStdin }()
+
+	inputJSON := `{"sessionId": "sess-copilot-prompt", "cwd": "/mock/cwd", "transcriptPath": "/mock/transcript.jsonl"}`
+	r, w, _ := os.Pipe()
+	os.Stdin = r
+
+	go func() {
+		w.Write([]byte(inputJSON))
+		w.Close()
+	}()
+
+	dbDir := t.TempDir()
+	t.Setenv("TT_DB_PATH", filepath.Join(dbDir, "test.db"))
+	conn, err := db.Open()
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	defer conn.Close()
+
+	cmd := &cobra.Command{}
+	cmd.Flags().String("session", "", "")
+	cmd.Flags().String("project", "", "")
+	cmd.Flags().String("tool", "claude-code", "")
+	cmd.Flags().String("model", "", "")
+	cmd.Flags().String("transcript-path", "", "")
+
+	cmd.Flags().Set("tool", "copilot-cli")
+
+	input, err := resolvePromptInput(cmd)
+	if err != nil {
+		t.Fatalf("resolvePromptInput failed: %v", err)
+	}
+
+	if input.SessionID != "sess-copilot-prompt" {
+		t.Errorf("SessionID = %q, want sess-copilot-prompt", input.SessionID)
+	}
+	if input.Project != "/mock/cwd" {
+		t.Errorf("Project = %q, want /mock/cwd", input.Project)
+	}
+	if input.TranscriptPath != "/mock/transcript.jsonl" {
+		t.Errorf("TranscriptPath = %q, want /mock/transcript.jsonl", input.TranscriptPath)
+	}
+
+	// Record to DB
+	err = recorder.RecordPrompt(conn, input)
+	if err != nil {
+		t.Fatalf("RecordPrompt failed: %v", err)
+	}
+
+	// Verify DB entry
+	var dbProject, dbTool string
+	err = conn.QueryRow("SELECT project, tool FROM sessions WHERE id='sess-copilot-prompt'").Scan(&dbProject, &dbTool)
+	if err != nil {
+		t.Fatalf("Query session failed: %v", err)
+	}
+	if dbProject != "/mock/cwd" {
+		t.Errorf("dbProject = %q, want /mock/cwd", dbProject)
+	}
+	if dbTool != "copilot-cli" {
+		t.Errorf("dbTool = %q, want copilot-cli", dbTool)
+	}
+
+	var dbTranscriptPath string
+	err = conn.QueryRow("SELECT transcript_path FROM turns WHERE session_id='sess-copilot-prompt'").Scan(&dbTranscriptPath)
+	if err != nil {
+		t.Fatalf("Query turn failed: %v", err)
+	}
+	if dbTranscriptPath != "/mock/transcript.jsonl" {
+		t.Errorf("dbTranscriptPath = %q, want /mock/transcript.jsonl", dbTranscriptPath)
+	}
+}
+
 
