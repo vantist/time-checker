@@ -90,3 +90,91 @@ TBD - created by archiving change ai-tool-time-tracker. Update Purpose after arc
 - **THEN** `tt record response --tokens '{}'` 被呼叫，token 欄位寫入 NULL
 - **THEN** exit code 0
 
+### Requirement: Hook 參數解析安全 Fallback 與預設 Model 載入
+
+當 hook 執行並解析 Prompt 輸入時，系統 SHALL 依據以下邏輯進行參數的 Fallback 與解析：
+1. **專案路徑 Fallback**：若 CLI 參數與 stdin payload 均未提供 `project` 路徑，系統 SHALL 使用當前行程之工作目錄 (`os.Getwd()`) 作為專案路徑。
+2. **Antigravity 預設 Model 載入**：若整合工具為 `"antigravity"` 且 model 為空字串時，系統 SHALL 主動由 `settings.json`（透過 `GetAntigravityModel`）載入並填入預設的模型名稱。
+
+#### Scenario: 專案路徑 Fallback 至工作目錄
+- **WHEN** 呼叫 `tt record prompt` 且未提供 `--project` 且 stdin 無 `cwd` 資訊
+- **THEN** 系統呼叫 `os.Getwd()` 取得當前工作目錄並填入 `sessions.project`
+
+#### Scenario: Antigravity 工具無模型名稱時主動載入設定檔預設值
+- **WHEN** 呼叫 `tt record prompt --tool antigravity` 且未提供 `--model`，且 `settings.json` 已配置預設模型為 `gemini-2.5-pro`
+- **THEN** 系統解析 model 為 `gemini-2.5-pro`
+
+### Requirement: Google Antigravity Hook 設定
+
+系統 SHALL 在 `tt setup --antigravity` 被呼叫時，在 `~/.gemini/config/hooks.json` 中以 merge 方式加入以下 hooks（若原檔不存在或不含 `tt` 欄位則新建，不覆寫其他已存在的 hooks）：
+
+```json
+{
+  "tt": {
+    "PreInvocation": [
+      {
+        "_owner": "tt",
+        "type": "command",
+        "command": "tt record prompt --tool antigravity"
+      }
+    ],
+    "Stop": [
+      {
+        "_owner": "tt",
+        "type": "command",
+        "command": "tt record response --tool antigravity"
+      }
+    ]
+  }
+}
+```
+
+#### Scenario: 首次設定 Google Antigravity hooks
+
+- **WHEN** `tt setup --antigravity` 被呼叫，且 `~/.gemini/config/hooks.json` 不存在或不含 `tt` 欄位
+- **THEN** 在 `~/.gemini/config/hooks.json` 中建立 `tt` 屬性，並在其下加入 `PreInvocation` 與 `Stop` hooks
+- **THEN** stdout 輸出 `Google Antigravity hooks configured in ~/.gemini/config/hooks.json`
+
+### Requirement: OpenAI Codex Hook 設定
+
+系統 SHALL 在 `tt setup --codex` 被呼叫時，在 `~/.codex/hooks.json` 中以 merge 方式加入以下 hooks（若原檔不存在或不含 `hooks` 欄位則新建，不覆寫其他已存在的 hooks）：
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "_owner": "tt",
+        "type": "command",
+        "command": "tt record prompt --tool codex"
+      }
+    ],
+    "Stop": [
+      {
+        "_owner": "tt",
+        "type": "command",
+        "command": "tt record response --tool codex"
+      }
+    ]
+  }
+}
+```
+
+#### Scenario: 首次設定 OpenAI Codex hooks
+
+- **WHEN** `tt setup --codex` 被呼叫，且 `~/.codex/hooks.json` 不存在或不含 `hooks` 欄位
+- **THEN** 在 `~/.codex/hooks.json` 中建立 `hooks` 屬性，並在其下加入 `UserPromptSubmit` 與 `Stop` hooks
+- **THEN** stdout 輸出 `OpenAI Codex hooks configured in ~/.codex/hooks.json`
+
+### Requirement: Antigravity 與 Codex Stdin Payload 欄位對照
+
+系統 SHALL 於 `tt record` 從 stdin 讀取 JSON payload 時，正確處理 `antigravity` 及 `codex` 的專屬欄位：
+
+1. 當 `--tool` 為 `antigravity` 且 stdin JSON 包含 `conversationId` 欄位時，系統 SHALL 將其映射為 tt 的 `SessionID`；包含 `transcriptPath` 欄位時，SHALL 將其映射為 tt 的 `TranscriptPath`。
+2. 當 `--tool` 為 `codex` 時，系統 SHALL 依標準 stdin JSON 格式進行讀取。
+
+#### Scenario: 成功解析 Antigravity 專屬 Stdin Payload
+
+- **WHEN** `tt record prompt --tool antigravity` 被呼叫，且 stdin 輸入為 `{"conversationId": "gemini-session-123", "transcriptPath": "/path/to/transcript.jsonl"}`
+- **THEN** 系統建立對應之 session，其 Session ID 為 `gemini-session-123`，且 TranscriptPath 為 `/path/to/transcript.jsonl`
+

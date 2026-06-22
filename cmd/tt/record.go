@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/user/tt/internal/db"
@@ -152,6 +155,67 @@ func resolvePromptInputFromEnv() (recorder.PromptInput, error) {
 	}, nil
 }
 
+func isInvalidProject(path string) bool {
+	if path == "" {
+		return true
+	}
+	excludes := []string{".gemini", ".claude", ".copilot"}
+	for _, excl := range excludes {
+		if strings.Contains(path, excl) {
+			return true
+		}
+	}
+	return false
+}
+
+func resolveProjectFromTranscript(transcriptPath string) string {
+	if transcriptPath == "" {
+		return ""
+	}
+	if len(transcriptPath) >= 2 && transcriptPath[:2] == "~/" {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			transcriptPath = filepath.Join(home, transcriptPath[2:])
+		}
+	}
+	f, err := os.Open(transcriptPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 64*1024), 1024*1024)
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line == "" {
+			continue
+		}
+		var e struct {
+			Type    string `json:"type"`
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			continue
+		}
+		if e.Type == "USER_INPUT" && e.Content != "" {
+			lines := strings.Split(e.Content, "\n")
+			for _, line := range lines {
+				if strings.Contains(line, " -> ") {
+					parts := strings.Split(line, " -> ")
+					if len(parts) >= 1 {
+						p := strings.TrimSpace(parts[0])
+						if info, err := os.Stat(p); err == nil && info.IsDir() {
+							return p
+						}
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
 func resolvePromptInput(cmd *cobra.Command) (recorder.PromptInput, error) {
 	tool, _ := cmd.Flags().GetString("tool")
 	stdin, _ := readStdinJSON(tool)
@@ -179,6 +243,32 @@ func resolvePromptInput(cmd *cobra.Command) (recorder.PromptInput, error) {
 	if project == "" {
 		if wd, err := os.Getwd(); err == nil {
 			project = wd
+		}
+	}
+
+	if isInvalidProject(project) {
+		if envWS := os.Getenv("ORCA_WORKSPACE_ID"); envWS != "" {
+			if parts := strings.Split(envWS, "::"); len(parts) == 2 {
+				p := parts[1]
+				if info, err := os.Stat(p); err == nil && info.IsDir() {
+					project = p
+				}
+			}
+		}
+		if isInvalidProject(project) {
+			if envWT := os.Getenv("ORCA_WORKTREE_ID"); envWT != "" {
+				if parts := strings.Split(envWT, "::"); len(parts) == 2 {
+					p := parts[1]
+					if info, err := os.Stat(p); err == nil && info.IsDir() {
+						project = p
+					}
+				}
+			}
+		}
+		if isInvalidProject(project) && transcriptPath != "" {
+			if tp := resolveProjectFromTranscript(transcriptPath); tp != "" {
+				project = tp
+			}
 		}
 	}
 

@@ -23,7 +23,7 @@ tt record prompt --session <id> --project <path> --tool <tool> --model <model>
 
 - `--session`：hook 提供的 session ID（字串）
 - `--project`：git root 路徑，若非 git repo 則為 cwd
-- `--tool`：`"claude-code"` 或 `"copilot-cli"`
+- `--tool`：`"claude-code"`、`"copilot-cli"` 或 `"antigravity"`
 - `--model`：模型名稱字串，未知時允許任意值
 
 #### Scenario: 首次 prompt 建立 session 與 turn
@@ -48,6 +48,12 @@ tt record prompt --session <id> --project <path> --tool <tool> --model <model>
 
 - **WHEN** `--project` 指向的路徑不是 git repo，或 `git branch --show-current` 回傳空字串
 - **THEN** `sessions.branch` 寫入 NULL，不報錯
+
+#### Scenario: Antigravity 多步驟 prompt 去重
+
+- **WHEN** 呼叫 `tt record prompt --session abc123 --tool antigravity --model gemini-3.5-flash`，且同 session 已存在 `response_at` 為 NULL 的 active turn
+- **THEN** `turns` 表不插入新紀錄
+- **THEN** 命令回傳 exit code 0，不重複插入
 
 ### Requirement: 記錄 response 事件
 
@@ -157,7 +163,6 @@ tt record prompt --session <id> --project <path> --tool <tool> --model <model> -
 
 - **WHEN** transcript 某行長度超過 bufio.Scanner 預設 buffer（64KB）
 - **THEN** `countLines` 使用擴大 buffer（1MB）後成功計行，回傳正確結果，不 panic
-
 
 ### Requirement: Hook 呼叫失敗不中斷 AI 工具
 

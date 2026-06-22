@@ -77,11 +77,47 @@ func (p *AntigravityProvider) ResolvePath(sessionID string, stdinPath string) st
 }
 
 func (p *AntigravityProvider) ExtractWindow(path string, fromOffset int, toOffset int) (WindowResult, error) {
-	return ParseAntigravityLog(path)
+	return ParseAntigravityLogWindow(path, fromOffset, toOffset)
 }
 
 func (p *AntigravityProvider) ExtractLastTurn(path string) (WindowResult, error) {
-	return ParseAntigravityLog(path)
+	all, err := loadTranscript(path)
+	if err != nil {
+		return WindowResult{}, err
+	}
+	if len(all) == 0 {
+		return WindowResult{}, nil
+	}
+
+	lastUserIdx := -1
+	for i := len(all) - 1; i >= 0; i-- {
+		if all[i].Type == "USER_INPUT" {
+			lastUserIdx = i
+			break
+		}
+	}
+
+	winFrom, winTo := lastUserIdx+1, len(all)
+	hasSteps := false
+	for i := winFrom; i < winTo; i++ {
+		if all[i].StepIndex > 0 {
+			hasSteps = true
+			break
+		}
+	}
+
+	if !hasSteps && lastUserIdx > 0 {
+		prevUserIdx := -1
+		for i := lastUserIdx - 1; i >= 0; i-- {
+			if all[i].Type == "USER_INPUT" {
+				prevUserIdx = i
+				break
+			}
+		}
+		winFrom, winTo = prevUserIdx+1, lastUserIdx
+	}
+
+	return ParseAntigravityLogWindow(path, winFrom, winTo)
 }
 
 // CodexProvider handles OpenAI Codex log format.

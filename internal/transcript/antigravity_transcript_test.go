@@ -1,9 +1,12 @@
 package transcript_test
 
 import (
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/user/tt/internal/transcript"
 )
@@ -179,3 +182,69 @@ func TestGetAntigravityModel(t *testing.T) {
 		}
 	})
 }
+
+func TestParseAntigravityLog_WithSQLiteTokens(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+
+	sessionID := "session-test-anti-tokens"
+
+	// Create local SQLite database at ~/.gemini/antigravity-cli/conversations/sessionID.db
+	dbDir := filepath.Join(tmpDir, ".gemini", "antigravity-cli", "conversations")
+	if err := os.MkdirAll(dbDir, 0o700); err != nil {
+		t.Fatalf("failed to create db dir: %v", err)
+	}
+	dbPath := filepath.Join(dbDir, sessionID+".db")
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	// Create tables
+	_, err = db.Exec("CREATE TABLE `gen_metadata` (`idx` integer, `data` blob, `size` integer, PRIMARY KEY (`idx`))")
+	if err != nil {
+		t.Fatalf("failed to create table: %v", err)
+	}
+
+	// Proto bytes for Field 1 -> Field 4 -> Field 2 (1500), Field 3 (200), Field 5 (1000)
+	protoBytes := []byte{0x0A, 0x0B, 0x22, 0x09, 0x10, 0xDC, 0x0B, 0x18, 0xC8, 0x01, 0x28, 0xE8, 0x07}
+	_, err = db.Exec("INSERT INTO gen_metadata (idx, data, size) VALUES (?, ?, ?)", 12, protoBytes, len(protoBytes))
+	if err != nil {
+		t.Fatalf("failed to insert metadata: %v", err)
+	}
+
+	// Create transcript.jsonl with a planner step referencing step_index 12
+	logsDir := filepath.Join(tmpDir, ".gemini", "antigravity-cli", "brain", sessionID, ".system_generated", "logs")
+	if err := os.MkdirAll(logsDir, 0o700); err != nil {
+		t.Fatalf("failed to create logs dir: %v", err)
+	}
+	transcriptPath := filepath.Join(logsDir, "transcript.jsonl")
+	transcriptContent := `{"step_index":12,"type":"PLANNER_RESPONSE","status":"DONE"}
+`
+	if err := os.WriteFile(transcriptPath, []byte(transcriptContent), 0o600); err != nil {
+		t.Fatalf("failed to write transcript: %v", err)
+	}
+
+	// Parse full log (implicitly window from 0 to -1)
+	res, err := transcript.ParseAntigravityLog(transcriptPath)
+	if err != nil {
+		t.Fatalf("ParseAntigravityLog failed: %v", err)
+	}
+
+	if len(res.Usages) != 1 {
+		t.Fatalf("expected 1 usage, got %d", len(res.Usages))
+	}
+
+	u := res.Usages[0]
+	if u.InputTokens != 1500 {
+		t.Errorf("expected input_tokens = 1500, got %d", u.InputTokens)
+	}
+	if u.OutputTokens != 200 {
+		t.Errorf("expected output_tokens = 200, got %d", u.OutputTokens)
+	}
+	if u.CacheReadTokens != 1000 {
+		t.Errorf("expected cache_read_tokens = 1000, got %d", u.CacheReadTokens)
+	}
+}
+

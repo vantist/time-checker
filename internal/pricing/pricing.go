@@ -70,9 +70,15 @@ func normalize(model string) string {
 // Calculate returns estimated cost in USD, or nil for unknown models.
 // cacheCreate5m and cacheCreate1h are both priced at the cacheCreation rate.
 func Calculate(model string, inputTokens, outputTokens, cacheRead, cacheCreation, cacheCreate5m, cacheCreate1h int) *float64 {
-	p, ok := table[normalize(model)]
+	norm := normalize(model)
+	p, ok := table[norm]
 	if !ok {
-		return nil
+		if strings.Contains(norm, ".") {
+			p, ok = table[strings.ReplaceAll(norm, ".", "-")]
+		}
+		if !ok {
+			return nil
+		}
 	}
 	totalCreation := cacheCreation + cacheCreate5m + cacheCreate1h
 	cost := (float64(inputTokens)*p.input +

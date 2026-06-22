@@ -855,6 +855,73 @@ func TestRepairSessions_Branch(t *testing.T) {
 	}
 }
 
+func TestRepairSessions_InvalidProject(t *testing.T) {
+	db := newTestDB(t)
+	tempDir := t.TempDir()
+
+	// Create mock home directory structure
+	homeDir := filepath.Join(tempDir, "home")
+	if err := os.MkdirAll(homeDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", homeDir)
+
+	// Create a real project directory
+	projectRoot := filepath.Join(homeDir, "workspace", "real-project")
+	if err := os.MkdirAll(filepath.Join(projectRoot, "subdir"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectRoot, ".git"), 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	// Insert session with invalid project path (e.g. customizations root)
+	sessionID := "sess-repair-invalid"
+	_, err := db.Exec(`
+		INSERT INTO sessions (id, started_at, tool, project, model, branch)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		sessionID, time.Now().UTC().Format(time.RFC3339), "antigravity", filepath.Join(homeDir, ".gemini", "config"), "gemini-3.5-flash", "",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write transcript containing a valid path
+	transcriptPath := filepath.Join(tempDir, "transcript.jsonl")
+	targetFilePath := filepath.Join(projectRoot, "subdir", "main.go")
+	transcriptLines := []string{
+		fmt.Sprintf(`{"type":"USER_INPUT","content":"The user has 1 active workspaces:\n%s -> my-project"}`, projectRoot),
+		fmt.Sprintf(`{"type":"PLANNER_RESPONSE","content":"Running command","tool_calls":[{"name":"list_dir","args":{"DirectoryPath":"%s"}}]}`, targetFilePath),
+	}
+
+	f, err := os.Create(transcriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range transcriptLines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+
+	// Insert turn with this transcript path
+	insertTurn(t, db, sessionID, transcriptPath, 0, time.Now().Add(-10*time.Second))
+
+	// Run repairSessions
+	repairSessions(db)
+
+	// Query session
+	var project, branch string
+	err = db.QueryRow("SELECT project, branch FROM sessions WHERE id=?", sessionID).Scan(&project, &branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The project should be resolved from the transcript to projectRoot
+	if filepath.Clean(project) != filepath.Clean(projectRoot) {
+		t.Errorf("expected project to be %q, got %q", projectRoot, project)
+	}
+}
+
 func initGitRepo(t *testing.T, dir string, branch string) {
 	t.Helper()
 	runCmd := func(args ...string) {

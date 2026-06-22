@@ -703,4 +703,64 @@ func TestResolvePromptInput_FallbackAndDefaultModel(t *testing.T) {
 			t.Errorf("Model = %q, want default gemini-2.5-flash-test", input.Model)
 		}
 	})
+
+	t.Run("invalid project fallback to ORCA_WORKSPACE_ID", func(t *testing.T) {
+		// Mock config dir as working directory to simulate customization root
+		configDir := filepath.Join(tmpDir, ".gemini", "config")
+		if err := os.MkdirAll(configDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		
+		// Change temporary working directory via environment or helper
+		// But since we can't easily change process-wide wd in a parallel-safe way without side effects, 
+		// we'll explicitly mock cmd's project flag to simulation config dir
+		cmd := newCmd("antigravity", "")
+		cmd.Flags().Set("project", configDir)
+
+		// Set ORCA_WORKSPACE_ID env var
+		realWorkspace := filepath.Join(tmpDir, "real-project")
+		if err := os.MkdirAll(realWorkspace, 0700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("ORCA_WORKSPACE_ID", "uuid::"+realWorkspace)
+
+		input, err := resolvePromptInput(cmd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if input.Project != realWorkspace {
+			t.Errorf("Project = %q, want resolved project %q from ORCA_WORKSPACE_ID", input.Project, realWorkspace)
+		}
+	})
+
+	t.Run("invalid project fallback to transcript", func(t *testing.T) {
+		configDir := filepath.Join(tmpDir, ".gemini", "config")
+		cmd := newCmd("antigravity", "")
+		cmd.Flags().Set("project", configDir)
+
+		// Create mock transcript
+		realWorkspace := filepath.Join(tmpDir, "another-real-project")
+		if err := os.MkdirAll(realWorkspace, 0700); err != nil {
+			t.Fatal(err)
+		}
+		transcriptPath := filepath.Join(tmpDir, "transcript.jsonl")
+		content := fmt.Sprintf(`{"type":"USER_INPUT","content":"[URI] -> [CorpusName]\n%s -> my-corpus"}` + "\n", realWorkspace)
+		if err := os.WriteFile(transcriptPath, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+
+		cmd.Flags().Set("transcript-path", transcriptPath)
+
+		// Clear env vars to ensure fallback to transcript
+		t.Setenv("ORCA_WORKSPACE_ID", "")
+		t.Setenv("ORCA_WORKTREE_ID", "")
+
+		input, err := resolvePromptInput(cmd)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if input.Project != realWorkspace {
+			t.Errorf("Project = %q, want resolved project %q from transcript", input.Project, realWorkspace)
+		}
+	})
 }

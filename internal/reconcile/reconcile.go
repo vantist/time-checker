@@ -259,10 +259,26 @@ func reconcileTurn(conn *sql.DB, dt danglingTurn) error {
 	return tx.Commit()
 }
 
+func isInvalidProject(path string) bool {
+	if path == "" {
+		return true
+	}
+	excludes := []string{".gemini", ".claude", ".copilot"}
+	for _, excl := range excludes {
+		if strings.Contains(path, excl) {
+			return true
+		}
+	}
+	return false
+}
+
 func repairSessions(db *sql.DB) {
 	rows, err := db.Query(`
 		SELECT id, COALESCE(tool, ''), COALESCE(model, ''), COALESCE(project, ''), COALESCE(branch, '') FROM sessions
-		WHERE project IS NULL OR project = '' OR model IS NULL OR model = '' OR branch IS NULL OR branch = ''
+		WHERE project IS NULL OR project = '' 
+		   OR project LIKE '%.gemini%' OR project LIKE '%.claude%' OR project LIKE '%.copilot%'
+		   OR model IS NULL OR model = '' 
+		   OR branch IS NULL OR branch = ''
 	`)
 	if err != nil {
 		return
@@ -295,9 +311,9 @@ func repairSessions(db *sql.DB) {
 		newModel := s.model
 		newBranch := s.branch
 
-		if s.project == "" || s.model == "" {
+		if s.project == "" || isInvalidProject(s.project) || s.model == "" {
 			if pathToRead, found := findExistingTranscriptPath(db, s.id); found {
-				if s.project == "" {
+				if s.project == "" || isInvalidProject(s.project) {
 					if homeDir, err := os.UserHomeDir(); err == nil {
 						newProject = resolveProjectPath(pathToRead, homeDir)
 					}
@@ -308,7 +324,7 @@ func repairSessions(db *sql.DB) {
 			}
 		}
 
-		if s.branch == "" && newProject != "" {
+		if (s.branch == "" || isInvalidProject(s.project)) && newProject != "" {
 			newBranch = gitBranch(newProject)
 			if newBranch == "" {
 				newBranch = "-"

@@ -9,7 +9,7 @@ TBD - created by archiving change ai-tool-time-tracker. Update Purpose after arc
 - Sessions 數量
 - Agent 時間（h m 格式）
 - User 主動時間（h m 格式，含使用的 idle threshold）
-- Token 總量（input、output、cache hit 比例）
+- Token 總量（包含 Input, Output, Cache read, Cache create 欄位）
 - 預估成本（USD）
 - 各個 Model 以及其角色 (Main/Subagent) 的 Token 與預估費用明細統計表
 
@@ -22,9 +22,9 @@ TBD - created by archiving change ai-tool-time-tracker. Update Purpose after arc
 #### Scenario: 有資料時輸出格式正確
 
 - **WHEN** 7 天內有資料，`tt report` 被呼叫
-- **THEN** stdout 輸出包含 "Sessions:", "Agent time:", "User active:", "Tokens in:", "Est. cost:" 等欄位
+- **THEN** stdout 輸出包含 "Sessions:", "Agent time:", "User active:", "Input:", "Output:", "Cache read:", "Cache create:", "Est. cost:" 等欄位
 - **THEN** Agent time 格式為 `Xh Ym`（如 `2h 34m`）
-- **THEN** 包含 "─── By Model & Role ───" 標題，下方列出各模型及角色的 token 與費用明細
+- **THEN** 包含 "─── By Model & Role ───" 標題，下方列出各模型及角色的 input, output, cache read, cache create token 與費用明細
 
 ### Requirement: 篩選條件
 
@@ -55,6 +55,6 @@ TBD - created by archiving change ai-tool-time-tracker. Update Purpose after arc
 
 - **WHEN** `tt report --format json` 被呼叫
 - **THEN** stdout 為合法 JSON，可被 `jq` 解析
-- **THEN** JSON 包含 `sessions_count`, `agent_time_sec`, `user_active_time_sec`, `input_tokens`, `output_tokens`, `estimated_cost_usd` 欄位
-- **THEN** JSON 中包含 `model_usages` 陣列，詳細列出各 model 的 Token 與費用小計，且區分 `is_subagent`
+- **THEN** JSON 包含 `sessions_count`, `agent_time_sec`, `user_active_time_sec`, `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_creation_tokens`, `estimated_cost_usd` 欄位
+- **THEN** JSON 中包含 `model_usages` 陣列，詳細列出各 model 的 Token (含 input, output, cache_read, cache_creation) 與費用小計，且區分 `is_subagent`
 

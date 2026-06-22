@@ -25,8 +25,13 @@ TBD - created by archiving change interrupt-reconcile. Update Purpose after arch
 
 #### Scenario: 進行中的 turn 不被誤算
 
-- **WHEN** DB 中存在 `response_at IS NULL` 的 turn，且該 turn 為 session 內最後一個，且對應 process 仍存活（`process.IsAlive` 回傳 true）
+- **WHEN** DB 中存在 `response_at IS NULL` 的 turn，且該 turn 為 session 內最後一個，且對應 process 仍存活（`process.IsAlive` 回傳 true），且該 turn 的 `prompt_at` 距今在 15 分鐘以內
 - **THEN** 系統 skip 該 turn，不做任何 UPDATE
+
+#### Scenario: 超時的進行中 turn 強制補算
+
+- **WHEN** DB 中存在 `response_at IS NULL` 的 turn，且該 turn 為 session 內最後一個，且對應 process 仍存活，但該 turn 的 `prompt_at` 距今大於 15 分鐘
+- **THEN** 系統不 skip 該 turn，強制進行 reconcile 將 `response_at` 更新為該 transcript 檔案的 mtime（若無法讀取或為 0 則 fallback 為目前時間減 1ms），並 UPDATE turn row
 
 #### Scenario: Stop hook 已寫 response_at 但 subagent_tokens_settled=0 時重算 token
 
@@ -101,7 +106,7 @@ TBD - created by archiving change interrupt-reconcile. Update Purpose after arch
 
 ### Requirement: Transcript 提取邏輯共用化
 
-系統 SHALL 將 `extractFromTranscriptAtOffset`、`extractSubagentTokens` 等提取函式移至 `internal/transcript` package，供 `cmd/tt/record.go` 與 `internal/reconcile/reconcile.go` 共用。
+系統 SHALL 將 `extractFromTranscriptAtOffset`、`extractSubagentTokens` 等提取函式移至 `internal/transcript` package，供 `cmd/tt/record.go` 與 `internal/reconcile/reconcile.go` 共用。此提取邏輯在解析對話紀錄時 SHALL 具備對損毀 JSON 與空行的容錯能力，並能支援最大 1MB 的對話行解析。
 
 #### Scenario: record.go 使用共用提取函式
 
@@ -112,4 +117,28 @@ TBD - created by archiving change interrupt-reconcile. Update Purpose after arch
 
 - **WHEN** `internal/reconcile/reconcile.go` 補算懸空 turn
 - **THEN** 呼叫 `internal/transcript.ExtractWindow`，不依賴 cmd 層的任何 context
+
+#### Scenario: Transcript 解析容錯
+
+- **WHEN** 呼叫 `internal/transcript.ExtractWindow` 且對話紀錄包含空行、空白字元行或損毀的 JSON 行
+- **THEN** 系統跳過這些無效行，並正確解析其餘有效對話 entries，不拋出錯誤或陷入無窮迴圈
+
+#### Scenario: Transcript 超長單行支援
+
+- **WHEN** 對話紀錄中單行大小介於 64KB 與 1MB 之間
+- **THEN** 系統仍能正常讀取與解析該行並統計 token，不因緩衝區限制而報錯
+
+### Requirement: RecordPrompt 自動搶佔逾期懸空 Turn
+
+對於 `antigravity` 工具，當 `RecordPrompt` 偵測到該 session 存在 `response_at IS NULL` 的 active turn 時，若該 turn 的 `prompt_at` 距今已大於 15 分鐘，系統 SHALL 先將其關閉（`response_at` 設為目前時間），以允許建立新的 turn。
+
+#### Scenario: RecordPrompt 遇到逾期 active turn 自動搶佔
+
+- **WHEN** 呼叫 `RecordPrompt` 且 `tool == "antigravity"`，此時 session 有一個 `response_at IS NULL` 且已逾期 15 分鐘以上的 active turn
+- **THEN** 系統將該 active turn 的 `response_at` 更新為目前時間，並順利建立新 turn
+
+#### Scenario: RecordPrompt 遇到未逾期 active turn 跳過
+
+- **WHEN** 呼叫 `RecordPrompt` 且 `tool == "antigravity"`，此時 session 有一個 `response_at IS NULL` 且未逾期的 active turn
+- **THEN** 系統跳過建立新 turn（返回 nil），不更動原有 turn
 

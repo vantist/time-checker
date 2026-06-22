@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/user/tt/internal/pricing"
 	_ "modernc.org/sqlite"
 )
 
@@ -69,7 +70,10 @@ func migrate(db *sql.DB) error {
 	if err := addTurnColumns(db); err != nil {
 		return err
 	}
-	return setupTurnModelUsages(db)
+	if err := setupTurnModelUsages(db); err != nil {
+		return err
+	}
+	return recalculateCosts(db)
 }
 
 func setupTurnModelUsages(db *sql.DB) error {
@@ -210,4 +214,84 @@ func addSessionColumns(db *sql.DB) error {
 		}
 	}
 	return nil
+}
+
+func recalculateCosts(db *sql.DB) error {
+	rows, err := db.Query(`
+		SELECT id, turn_id, model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, estimated_cost_usd
+		FROM turn_model_usages
+		WHERE (input_tokens > 0 OR output_tokens > 0)
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type usageUpdate struct {
+		id      int64
+		turnID  int64
+		costVal float64
+	}
+	var updates []usageUpdate
+
+	for rows.Next() {
+		var id, turnID int64
+		var model string
+		var input, output, cacheRead, cacheCreate, cache5m, cache1h int
+		var currentCost float64
+		if err := rows.Scan(&id, &turnID, &model, &input, &output, &cacheRead, &cacheCreate, &cache5m, &cache1h, &currentCost); err != nil {
+			continue
+		}
+
+		costPtr := pricing.Calculate(model, input, output, cacheRead, cacheCreate, cache5m, cache1h)
+		if costPtr != nil {
+			newCost := *costPtr
+			if newCost > currentCost+1e-9 || newCost < currentCost-1e-9 {
+				updates = append(updates, usageUpdate{id: id, turnID: turnID, costVal: newCost})
+			}
+		}
+	}
+	rows.Close()
+
+	if len(updates) == 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	for _, u := range updates {
+		_, err := tx.Exec("UPDATE turn_model_usages SET estimated_cost_usd = ? WHERE id = ?", u.costVal, u.id)
+		if err != nil {
+			return err
+		}
+	}
+
+	turnIDs := map[int64]bool{}
+	for _, u := range updates {
+		turnIDs[u.turnID] = true
+	}
+
+	for tid := range turnIDs {
+		var sum sql.NullFloat64
+		err := tx.QueryRow("SELECT SUM(estimated_cost_usd) FROM turn_model_usages WHERE turn_id = ?", tid).Scan(&sum)
+		if err != nil {
+			return err
+		}
+		var val interface{}
+		if sum.Valid {
+			val = sum.Float64
+		} else {
+			val = nil
+		}
+		_, err = tx.Exec("UPDATE turns SET estimated_cost_usd = ? WHERE id = ?", val, tid)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }

@@ -199,6 +199,12 @@ func TestCalculate(t *testing.T) {
 			cacheRead:   1_000_000,
 			want:        11.00,
 		},
+		{
+			name:        "claude-opus-4-6 dot fallback",
+			model:       "claude-opus-4.6",
+			inputTokens: 1_000_000,
+			want:        5.00,
+		},
 	}
 
 	for _, tc := range tests {

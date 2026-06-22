@@ -349,5 +349,36 @@
 
 ---
 
+## [spex-debugging] session-path-shift — 2026-06-22
+
+### Misses
+- 🔴 blocking: Using `json.Decoder` in a `dec.More()` loop without checking or handling decoder error propagation caused an infinite loop during path resolution of JSONL logs.
+
+### Promote candidates
+- [ ] Use `bufio.Scanner` + `json.Unmarshal` instead of `json.Decoder` for JSONL parsing
+  > **Why**: `json.Decoder` gets stuck in a permanent error state when encountering trailing newlines or corrupt lines in JSONL, causing `dec.More()` to loop infinitely. `bufio.Scanner` safely advances to the next line.
+  > **How to apply**: Always read newline-delimited JSON files line-by-line using `bufio.NewScanner` and call `json.Unmarshal` on each line.
+
+---
+
+## [spex-debugging] antigravity-token-zero — 2026-06-22
+
+### Promote candidates
+- [ ] Extract tool-specific binary/protobuf metadata from secondary local SQLite database files
+  > **Why**: Google Antigravity keeps detailed model usage in an SQLite database rather than the standard JSONL transcript file. Resolving and parsing these database files is necessary to keep token/pricing calculations correct.
+  > **How to apply**: Map standard session logs to the tool's database files (e.g., `conversations/<session_id>.db`) and parse the internal binary formats (e.g., protobuf blobs in `gen_metadata` table).
+
+---
+
+## [spex-debugging] antigravity-cost-na — 2026-06-22
+
+### Promote candidates
+- [ ] Normalize pricing lookups across minor model versions (e.g. dot vs. hyphen naming differences)
+  > **Why**: Settings files of different tools use dots (Claude Opus 4.6), while the internal pricing table uses hyphens (claude-opus-4-6). Fallback lookup prevents cost estimation failure on minor formatting inconsistencies.
+  > **How to apply**: Implement fallback lookup logic in pricing tools that replaces dots with hyphens if direct map lookup fails.
+
+
+
+
 
 

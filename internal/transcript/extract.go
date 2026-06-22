@@ -106,6 +106,7 @@ type contentBlock struct {
 type entry struct {
 	Type        string `json:"type"`
 	IsSidechain bool   `json:"isSidechain"`
+	StepIndex   int    `json:"step_index"`
 	Message     struct {
 		Model   string         `json:"model"`
 		Usage   usageFields    `json:"usage"`
