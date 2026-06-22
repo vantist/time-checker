@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 	"os/exec"
@@ -477,5 +478,167 @@ func TestIntegration_FallbackDefaultModel(t *testing.T) {
 
 	if sess.Model != "gemini-3.5-flash" {
 		t.Errorf("expected model %q, got %q", "gemini-3.5-flash", sess.Model)
+	}
+}
+
+func TestIntegration_MultiToolIntegration(t *testing.T) {
+	projDir := t.TempDir()
+	home := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	_, _, err := runTT(t, home, dbPath, "", "report")
+	if err != nil {
+		t.Fatalf("failed to initialize db: %v", err)
+	}
+
+	// 1. Claude Code test
+	t.Setenv("PROCESS_PID", "10001")
+	t.Setenv("PROCESS_START", "1700000001")
+
+	claudeTransPath := filepath.Join(t.TempDir(), "claude_transcript.jsonl")
+	claudeContent := `{"type":"user","isSidechain":false}
+`
+	if err := os.WriteFile(claudeTransPath, []byte(claudeContent), 0644); err != nil {
+		t.Fatalf("failed to write Claude transcript: %v", err)
+	}
+
+	claudeStdin := fmt.Sprintf(`{"session_id":"sess-claude","cwd":"%s","model":"claude-3-5-sonnet","transcript_path":"%s"}`, projDir, claudeTransPath)
+	stdout, stderr, err := runTT(t, home, dbPath, claudeStdin, "record", "prompt", "--tool", "claude-code")
+	if err != nil {
+		t.Fatalf("Claude prompt record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Logf("Claude prompt record stderr: %s", stderr)
+	}
+
+	claudeResponse := `{"type":"assistant","isSidechain":false,"message":{"model":"claude-3-5-sonnet","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}}
+`
+	f, err := os.OpenFile(claudeTransPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("failed to open Claude transcript: %v", err)
+	}
+	f.WriteString(claudeResponse)
+	f.Close()
+
+	stdout, stderr, err = runTT(t, home, dbPath, claudeStdin, "record", "response", "--tool", "claude-code")
+	if err != nil {
+		t.Fatalf("Claude response record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Logf("Claude response record stderr: %s", stderr)
+	}
+
+	// 2. Copilot CLI test
+	t.Setenv("PROCESS_PID", "10002")
+	t.Setenv("PROCESS_START", "1700000002")
+
+	copilotTransPath := filepath.Join(t.TempDir(), "events.jsonl")
+	if err := os.WriteFile(copilotTransPath, []byte(""), 0644); err != nil {
+		t.Fatalf("failed to create Copilot transcript: %v", err)
+	}
+
+	copilotStdin := fmt.Sprintf(`{"sessionId":"sess-copilot","cwd":"%s","model":"gpt-4o","transcriptPath":"%s"}`, projDir, copilotTransPath)
+	stdout, stderr, err = runTT(t, home, dbPath, copilotStdin, "record", "prompt", "--tool", "copilot-cli")
+	if err != nil {
+		t.Fatalf("Copilot prompt record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Logf("Copilot prompt record stderr: %s", stderr)
+	}
+
+	copilotContent := `{"type":"session.shutdown","data":{"mainModel":"gpt-4o","modelMetrics":{"gpt-4o":{"usage":{"inputTokens":200,"outputTokens":100,"cacheReadTokens":50,"cacheWriteTokens":25}}}}}
+`
+	if err := os.WriteFile(copilotTransPath, []byte(copilotContent), 0644); err != nil {
+		t.Fatalf("failed to write Copilot transcript: %v", err)
+	}
+
+	stdout, stderr, err = runTT(t, home, dbPath, copilotStdin, "record", "response", "--tool", "copilot-cli")
+	if err != nil {
+		t.Fatalf("Copilot response record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Logf("Copilot response record stderr: %s", stderr)
+	}
+
+	// 3. Google Antigravity test
+	t.Setenv("PROCESS_PID", "10003")
+	t.Setenv("PROCESS_START", "1700000003")
+
+	antigravityTransPath := filepath.Join(t.TempDir(), "antigravity_transcript.jsonl")
+	antigravityContent := `{"type":"user","isSidechain":false}
+`
+	if err := os.WriteFile(antigravityTransPath, []byte(antigravityContent), 0644); err != nil {
+		t.Fatalf("failed to write Antigravity transcript: %v", err)
+	}
+
+	antigravityStdin := fmt.Sprintf(`{"conversationId":"sess-antigravity","cwd":"%s","model":"gemini-1.5-pro","transcriptPath":"%s"}`, projDir, antigravityTransPath)
+	stdout, stderr, err = runTT(t, home, dbPath, antigravityStdin, "record", "prompt", "--tool", "antigravity")
+	if err != nil {
+		t.Fatalf("Antigravity prompt record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Logf("Antigravity prompt record stderr: %s", stderr)
+	}
+
+	antigravityResponse := `{"type":"assistant","isSidechain":false,"message":{"model":"gemini-1.5-pro","usage":{"input_tokens":300,"output_tokens":150,"cache_read_input_tokens":80,"cache_creation_input_tokens":40}}}
+`
+	f, err = os.OpenFile(antigravityTransPath, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		t.Fatalf("failed to open Antigravity transcript: %v", err)
+	}
+	f.WriteString(antigravityResponse)
+	f.Close()
+
+	stdout, stderr, err = runTT(t, home, dbPath, antigravityStdin, "record", "response", "--tool", "antigravity")
+	if err != nil {
+		t.Fatalf("Antigravity response record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
+	}
+	if stderr != "" {
+		t.Logf("Antigravity response record stderr: %s", stderr)
+	}
+
+	// Assert Claude DB results
+	turnsClaude, err := getTurns(t, dbPath, "sess-claude")
+	if err != nil {
+		t.Fatalf("failed to get Claude turns: %v", err)
+	}
+	if len(turnsClaude) != 1 {
+		for i, trn := range turnsClaude {
+			t.Logf("Turn %d: ID=%d, SessionID=%q, PromptAt=%q, ResponseAt=%v", i, trn.ID, trn.SessionID, trn.PromptAt, trn.ResponseAt)
+		}
+		t.Fatalf("expected 1 Claude turn, got %d", len(turnsClaude))
+	}
+	tClaude := turnsClaude[0]
+	if tClaude.InputTokens == nil || *tClaude.InputTokens != 100 {
+		t.Errorf("expected Claude input tokens 100, got %v", tClaude.InputTokens)
+	}
+
+	// Assert Copilot DB results
+	turnsCopilot, err := getTurns(t, dbPath, "sess-copilot")
+	if err != nil || len(turnsCopilot) != 1 {
+		t.Fatalf("failed to get Copilot turns: %v", err)
+	}
+	tCopilot := turnsCopilot[0]
+	if tCopilot.InputTokens == nil || *tCopilot.InputTokens != 200 {
+		t.Errorf("expected Copilot input tokens 200, got %v", tCopilot.InputTokens)
+	}
+
+	// Assert Antigravity DB results
+	turnsAntigravity, err := getTurns(t, dbPath, "sess-antigravity")
+	if err != nil || len(turnsAntigravity) != 1 {
+		t.Fatalf("failed to get Antigravity turns: %v", err)
+	}
+	tAntigravity := turnsAntigravity[0]
+	if tAntigravity.InputTokens == nil || *tAntigravity.InputTokens != 300 {
+		t.Errorf("expected Antigravity input tokens 300, got %v", tAntigravity.InputTokens)
+	}
+
+	// Assert model usages table as well
+	usagesClaude, err := getTurnModelUsages(t, dbPath, tClaude.ID)
+	if err != nil || len(usagesClaude) != 1 {
+		t.Fatalf("failed to get Claude model usages: %v", err)
+	}
+	if usagesClaude[0].Model != "claude-3-5-sonnet" {
+		t.Errorf("expected Claude model 'claude-3-5-sonnet', got %q", usagesClaude[0].Model)
 	}
 }
