@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -35,5 +37,31 @@ func TestIntegration_BinaryExists(t *testing.T) {
 	}
 	if _, err := os.Stat(binPath); err != nil {
 		t.Fatalf("compiled binary does not exist at %s: %v", binPath, err)
+	}
+}
+
+func runTT(t *testing.T, home, dbPath, stdin string, args ...string) (string, string, error) {
+	t.Helper()
+	cmd := exec.Command(binPath, args...)
+	cmd.Env = append(os.Environ(), "HOME="+home, "TT_DB_PATH="+dbPath)
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	err := cmd.Run()
+	return stdoutBuf.String(), stderrBuf.String(), err
+}
+
+func TestIntegration_RunTTHelper(t *testing.T) {
+	home := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	stdout, stderr, err := runTT(t, home, dbPath, "", "version")
+	if err != nil {
+		t.Fatalf("runTT failed: %v, stderr: %s", err, stderr)
+	}
+	if !strings.Contains(stdout, "dev") {
+		t.Errorf("expected version output 'dev', got: %s", stdout)
 	}
 }
