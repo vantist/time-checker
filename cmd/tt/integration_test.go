@@ -106,34 +106,37 @@ type dbTurnModelUsage struct {
 	EstimatedCostUSD    float64
 }
 
-func getSession(t *testing.T, dbPath, sessionID string) (*dbSession, error) {
+func openDB(t *testing.T, dbPath string) *sql.DB {
 	t.Helper()
 	dbConn, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return nil, err
+		t.Fatalf("failed to open database %s: %v", dbPath, err)
 	}
+	return dbConn
+}
+
+func getSession(t *testing.T, dbPath, sessionID string) *dbSession {
+	t.Helper()
+	dbConn := openDB(t, dbPath)
 	defer dbConn.Close()
 
 	var s dbSession
-	err = dbConn.QueryRow("SELECT id, project, tool, model, branch, work_item, started_at, ended_at FROM sessions WHERE id = ?", sessionID).
+	err := dbConn.QueryRow("SELECT id, project, tool, model, branch, work_item, started_at, ended_at FROM sessions WHERE id = ?", sessionID).
 		Scan(&s.ID, &s.Project, &s.Tool, &s.Model, &s.Branch, &s.WorkItem, &s.StartedAt, &s.EndedAt)
 	if err != nil {
-		return nil, err
+		t.Fatalf("failed to get session %s: %v", sessionID, err)
 	}
-	return &s, nil
+	return &s
 }
 
-func getTurns(t *testing.T, dbPath, sessionID string) ([]dbTurn, error) {
+func getTurns(t *testing.T, dbPath, sessionID string) []dbTurn {
 	t.Helper()
-	dbConn, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		return nil, err
-	}
+	dbConn := openDB(t, dbPath)
 	defer dbConn.Close()
 
 	rows, err := dbConn.Query("SELECT id, session_id, prompt_at, response_at, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, estimated_cost_usd FROM turns WHERE session_id = ? ORDER BY id ASC", sessionID)
 	if err != nil {
-		return nil, err
+		t.Fatalf("failed to query turns for %s: %v", sessionID, err)
 	}
 	defer rows.Close()
 
@@ -142,24 +145,21 @@ func getTurns(t *testing.T, dbPath, sessionID string) ([]dbTurn, error) {
 		var r dbTurn
 		err := rows.Scan(&r.ID, &r.SessionID, &r.PromptAt, &r.ResponseAt, &r.InputTokens, &r.OutputTokens, &r.CacheReadTokens, &r.CacheCreationTokens, &r.EstimatedCostUSD)
 		if err != nil {
-			return nil, err
+			t.Fatalf("failed to scan turn: %v", err)
 		}
 		turns = append(turns, r)
 	}
-	return turns, nil
+	return turns
 }
 
-func getTurnModelUsages(t *testing.T, dbPath string, turnID int64) ([]dbTurnModelUsage, error) {
+func getTurnModelUsages(t *testing.T, dbPath string, turnID int64) []dbTurnModelUsage {
 	t.Helper()
-	dbConn, err := sql.Open("sqlite", dbPath)
-	if err != nil {
-		return nil, err
-	}
+	dbConn := openDB(t, dbPath)
 	defer dbConn.Close()
 
 	rows, err := dbConn.Query("SELECT id, turn_id, model, is_subagent, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, estimated_cost_usd FROM turn_model_usages WHERE turn_id = ? ORDER BY id ASC", turnID)
 	if err != nil {
-		return nil, err
+		t.Fatalf("failed to query turn model usages for turn %d: %v", turnID, err)
 	}
 	defer rows.Close()
 
@@ -168,11 +168,11 @@ func getTurnModelUsages(t *testing.T, dbPath string, turnID int64) ([]dbTurnMode
 		var u dbTurnModelUsage
 		err := rows.Scan(&u.ID, &u.TurnID, &u.Model, &u.IsSubagent, &u.InputTokens, &u.OutputTokens, &u.CacheReadTokens, &u.CacheCreationTokens, &u.EstimatedCostUSD)
 		if err != nil {
-			return nil, err
+			t.Fatalf("failed to scan model usage: %v", err)
 		}
 		usages = append(usages, u)
 	}
-	return usages, nil
+	return usages
 }
 
 func TestIntegration_DBAssertHelpers(t *testing.T) {
@@ -220,18 +220,12 @@ func TestIntegration_DBAssertHelpers(t *testing.T) {
 		t.Fatalf("failed to insert data: %v", err)
 	}
 
-	sess, err := getSession(t, dbPath, "sess-1")
-	if err != nil {
-		t.Fatalf("getSession failed: %v", err)
-	}
+	sess := getSession(t, dbPath, "sess-1")
 	if sess.ID != "sess-1" {
 		t.Errorf("expected session ID 'sess-1', got %q", sess.ID)
 	}
 
-	turns, err := getTurns(t, dbPath, "sess-1")
-	if err != nil {
-		t.Fatalf("getTurns failed: %v", err)
-	}
+	turns := getTurns(t, dbPath, "sess-1")
 	if len(turns) != 1 {
 		t.Fatalf("expected 1 turn, got %d", len(turns))
 	}
@@ -290,10 +284,7 @@ func TestIntegration_GitBranchRepair(t *testing.T) {
 		t.Logf("report run finished (might be empty): %v", err)
 	}
 
-	sess, err := getSession(t, dbPath, "sess-git-repair")
-	if err != nil {
-		t.Fatalf("failed to get session: %v", err)
-	}
+	sess := getSession(t, dbPath, "sess-git-repair")
 
 	if sess.Branch == nil {
 		t.Fatal("session branch is nil")
@@ -340,10 +331,7 @@ func TestIntegration_ActiveTurnPreemption(t *testing.T) {
 		t.Fatalf("second record prompt failed: %v", err)
 	}
 
-	turns, err := getTurns(t, dbPath, "sess-preempt")
-	if err != nil {
-		t.Fatalf("failed to get turns: %v", err)
-	}
+	turns := getTurns(t, dbPath, "sess-preempt")
 	if len(turns) != 2 {
 		t.Fatalf("expected 2 total turns, got %d", len(turns))
 	}
@@ -420,10 +408,7 @@ func TestIntegration_IdleThresholdReconcile(t *testing.T) {
 		t.Logf("report run finished: %v", err)
 	}
 
-	turnsRecent, err := getTurns(t, dbPath, "sess-idle-recent")
-	if err != nil {
-		t.Fatalf("failed to get recent turns: %v", err)
-	}
+	turnsRecent := getTurns(t, dbPath, "sess-idle-recent")
 	if len(turnsRecent) != 1 {
 		t.Fatalf("expected 1 recent turn, got %d", len(turnsRecent))
 	}
@@ -431,10 +416,7 @@ func TestIntegration_IdleThresholdReconcile(t *testing.T) {
 		t.Errorf("expected recent active turn NOT to be reconciled, but got response_at: %s", *turnsRecent[0].ResponseAt)
 	}
 
-	turnsOld, err := getTurns(t, dbPath, "sess-idle-old")
-	if err != nil {
-		t.Fatalf("failed to get old turns: %v", err)
-	}
+	turnsOld := getTurns(t, dbPath, "sess-idle-old")
 	if len(turnsOld) != 1 {
 		t.Fatalf("expected 1 old turn, got %d", len(turnsOld))
 	}
@@ -467,10 +449,7 @@ func TestIntegration_FallbackDefaultModel(t *testing.T) {
 		t.Fatalf("record prompt failed: %v", err)
 	}
 
-	sess, err := getSession(t, dbPath, "sess-fallback")
-	if err != nil {
-		t.Fatalf("failed to get session: %v", err)
-	}
+	sess := getSession(t, dbPath, "sess-fallback")
 
 	if sess.Project != expectedWD {
 		t.Errorf("expected project %q, got %q", expectedWD, sess.Project)
@@ -491,154 +470,108 @@ func TestIntegration_MultiToolIntegration(t *testing.T) {
 		t.Fatalf("failed to initialize db: %v", err)
 	}
 
-	// 1. Claude Code test
-	t.Setenv("PROCESS_PID", "10001")
-	t.Setenv("PROCESS_START", "1700000001")
-
-	claudeTransPath := filepath.Join(t.TempDir(), "claude_transcript.jsonl")
-	claudeContent := `{"type":"user","isSidechain":false}
-`
-	if err := os.WriteFile(claudeTransPath, []byte(claudeContent), 0644); err != nil {
-		t.Fatalf("failed to write Claude transcript: %v", err)
+	testCases := []struct {
+		name          string
+		tool          string
+		pid           string
+		start         string
+		sessID        string
+		stdinPattern  string
+		initialData   string
+		finalData     string
+		expectedModel string
+		expectedInput int64
+	}{
+		{
+			name:          "Claude Code",
+			tool:          "claude-code",
+			pid:           "10001",
+			start:         "1700000001",
+			sessID:        "sess-claude",
+			stdinPattern:  `{"session_id":"%s","cwd":"%s","model":"claude-3-5-sonnet","transcript_path":"%s"}`,
+			initialData:   `{"type":"user","isSidechain":false}` + "\n",
+			finalData:     `{"type":"assistant","isSidechain":false,"message":{"model":"claude-3-5-sonnet","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}}` + "\n",
+			expectedModel: "claude-3-5-sonnet",
+			expectedInput: 100,
+		},
+		{
+			name:          "Copilot CLI",
+			tool:          "copilot-cli",
+			pid:           "10002",
+			start:         "1700000002",
+			sessID:        "sess-copilot",
+			stdinPattern:  `{"sessionId":"%s","cwd":"%s","model":"gpt-4o","transcriptPath":"%s"}`,
+			initialData:   "",
+			finalData:     `{"type":"session.shutdown","data":{"mainModel":"gpt-4o","modelMetrics":{"gpt-4o":{"usage":{"inputTokens":200,"outputTokens":100,"cacheReadTokens":50,"cacheWriteTokens":25}}}}}` + "\n",
+			expectedModel: "gpt-4o",
+			expectedInput: 200,
+		},
+		{
+			name:          "Google Antigravity",
+			tool:          "antigravity",
+			pid:           "10003",
+			start:         "1700000003",
+			sessID:        "sess-antigravity",
+			stdinPattern:  `{"conversationId":"%s","cwd":"%s","model":"gemini-1.5-pro","transcriptPath":"%s"}`,
+			initialData:   `{"type":"user","isSidechain":false}` + "\n",
+			finalData:     `{"type":"assistant","isSidechain":false,"message":{"model":"gemini-1.5-pro","usage":{"input_tokens":300,"output_tokens":150,"cache_read_input_tokens":80,"cache_creation_input_tokens":40}}}` + "\n",
+			expectedModel: "gemini-1.5-pro",
+			expectedInput: 300,
+		},
 	}
 
-	claudeStdin := fmt.Sprintf(`{"session_id":"sess-claude","cwd":"%s","model":"claude-3-5-sonnet","transcript_path":"%s"}`, projDir, claudeTransPath)
-	stdout, stderr, err := runTT(t, home, dbPath, claudeStdin, "record", "prompt", "--tool", "claude-code")
-	if err != nil {
-		t.Fatalf("Claude prompt record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
-	}
-	if stderr != "" {
-		t.Logf("Claude prompt record stderr: %s", stderr)
-	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("PROCESS_PID", tc.pid)
+			t.Setenv("PROCESS_START", tc.start)
 
-	claudeResponse := `{"type":"assistant","isSidechain":false,"message":{"model":"claude-3-5-sonnet","usage":{"input_tokens":100,"output_tokens":50,"cache_read_input_tokens":10,"cache_creation_input_tokens":5}}}
-`
-	f, err := os.OpenFile(claudeTransPath, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		t.Fatalf("failed to open Claude transcript: %v", err)
-	}
-	f.WriteString(claudeResponse)
-	f.Close()
+			transPath := filepath.Join(t.TempDir(), "transcript.jsonl")
+			if err := os.WriteFile(transPath, []byte(tc.initialData), 0644); err != nil {
+				t.Fatalf("failed to write transcript: %v", err)
+			}
 
-	stdout, stderr, err = runTT(t, home, dbPath, claudeStdin, "record", "response", "--tool", "claude-code")
-	if err != nil {
-		t.Fatalf("Claude response record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
-	}
-	if stderr != "" {
-		t.Logf("Claude response record stderr: %s", stderr)
-	}
+			stdin := fmt.Sprintf(tc.stdinPattern, tc.sessID, projDir, transPath)
+			stdout, stderr, err := runTT(t, home, dbPath, stdin, "record", "prompt", "--tool", tc.tool)
+			if err != nil {
+				t.Fatalf("prompt record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
+			}
+			if stderr != "" {
+				t.Logf("prompt record stderr: %s", stderr)
+			}
 
-	// 2. Copilot CLI test
-	t.Setenv("PROCESS_PID", "10002")
-	t.Setenv("PROCESS_START", "1700000002")
+			f, err := os.OpenFile(transPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+			if err != nil {
+				t.Fatalf("failed to open transcript: %v", err)
+			}
+			if _, err := f.WriteString(tc.finalData); err != nil {
+				t.Fatalf("failed to append response to transcript: %v", err)
+			}
+			f.Close()
 
-	copilotTransPath := filepath.Join(t.TempDir(), "events.jsonl")
-	if err := os.WriteFile(copilotTransPath, []byte(""), 0644); err != nil {
-		t.Fatalf("failed to create Copilot transcript: %v", err)
-	}
+			stdout, stderr, err = runTT(t, home, dbPath, stdin, "record", "response", "--tool", tc.tool)
+			if err != nil {
+				t.Fatalf("response record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
+			}
+			if stderr != "" {
+				t.Logf("response record stderr: %s", stderr)
+			}
 
-	copilotStdin := fmt.Sprintf(`{"sessionId":"sess-copilot","cwd":"%s","model":"gpt-4o","transcriptPath":"%s"}`, projDir, copilotTransPath)
-	stdout, stderr, err = runTT(t, home, dbPath, copilotStdin, "record", "prompt", "--tool", "copilot-cli")
-	if err != nil {
-		t.Fatalf("Copilot prompt record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
-	}
-	if stderr != "" {
-		t.Logf("Copilot prompt record stderr: %s", stderr)
-	}
+			turns := getTurns(t, dbPath, tc.sessID)
+			if len(turns) != 1 {
+				t.Fatalf("expected 1 turn, got %d", len(turns))
+			}
+			trn := turns[0]
+			if trn.InputTokens == nil || *trn.InputTokens != tc.expectedInput {
+				t.Errorf("expected input tokens %d, got %v", tc.expectedInput, trn.InputTokens)
+			}
 
-	copilotContent := `{"type":"session.shutdown","data":{"mainModel":"gpt-4o","modelMetrics":{"gpt-4o":{"usage":{"inputTokens":200,"outputTokens":100,"cacheReadTokens":50,"cacheWriteTokens":25}}}}}
-`
-	if err := os.WriteFile(copilotTransPath, []byte(copilotContent), 0644); err != nil {
-		t.Fatalf("failed to write Copilot transcript: %v", err)
-	}
-
-	stdout, stderr, err = runTT(t, home, dbPath, copilotStdin, "record", "response", "--tool", "copilot-cli")
-	if err != nil {
-		t.Fatalf("Copilot response record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
-	}
-	if stderr != "" {
-		t.Logf("Copilot response record stderr: %s", stderr)
-	}
-
-	// 3. Google Antigravity test
-	t.Setenv("PROCESS_PID", "10003")
-	t.Setenv("PROCESS_START", "1700000003")
-
-	antigravityTransPath := filepath.Join(t.TempDir(), "antigravity_transcript.jsonl")
-	antigravityContent := `{"type":"user","isSidechain":false}
-`
-	if err := os.WriteFile(antigravityTransPath, []byte(antigravityContent), 0644); err != nil {
-		t.Fatalf("failed to write Antigravity transcript: %v", err)
-	}
-
-	antigravityStdin := fmt.Sprintf(`{"conversationId":"sess-antigravity","cwd":"%s","model":"gemini-1.5-pro","transcriptPath":"%s"}`, projDir, antigravityTransPath)
-	stdout, stderr, err = runTT(t, home, dbPath, antigravityStdin, "record", "prompt", "--tool", "antigravity")
-	if err != nil {
-		t.Fatalf("Antigravity prompt record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
-	}
-	if stderr != "" {
-		t.Logf("Antigravity prompt record stderr: %s", stderr)
-	}
-
-	antigravityResponse := `{"type":"assistant","isSidechain":false,"message":{"model":"gemini-1.5-pro","usage":{"input_tokens":300,"output_tokens":150,"cache_read_input_tokens":80,"cache_creation_input_tokens":40}}}
-`
-	f, err = os.OpenFile(antigravityTransPath, os.O_APPEND|os.O_WRONLY, 0644)
-	if err != nil {
-		t.Fatalf("failed to open Antigravity transcript: %v", err)
-	}
-	f.WriteString(antigravityResponse)
-	f.Close()
-
-	stdout, stderr, err = runTT(t, home, dbPath, antigravityStdin, "record", "response", "--tool", "antigravity")
-	if err != nil {
-		t.Fatalf("Antigravity response record failed: %v, stdout: %s, stderr: %s", err, stdout, stderr)
-	}
-	if stderr != "" {
-		t.Logf("Antigravity response record stderr: %s", stderr)
-	}
-
-	// Assert Claude DB results
-	turnsClaude, err := getTurns(t, dbPath, "sess-claude")
-	if err != nil {
-		t.Fatalf("failed to get Claude turns: %v", err)
-	}
-	if len(turnsClaude) != 1 {
-		for i, trn := range turnsClaude {
-			t.Logf("Turn %d: ID=%d, SessionID=%q, PromptAt=%q, ResponseAt=%v", i, trn.ID, trn.SessionID, trn.PromptAt, trn.ResponseAt)
-		}
-		t.Fatalf("expected 1 Claude turn, got %d", len(turnsClaude))
-	}
-	tClaude := turnsClaude[0]
-	if tClaude.InputTokens == nil || *tClaude.InputTokens != 100 {
-		t.Errorf("expected Claude input tokens 100, got %v", tClaude.InputTokens)
-	}
-
-	// Assert Copilot DB results
-	turnsCopilot, err := getTurns(t, dbPath, "sess-copilot")
-	if err != nil || len(turnsCopilot) != 1 {
-		t.Fatalf("failed to get Copilot turns: %v", err)
-	}
-	tCopilot := turnsCopilot[0]
-	if tCopilot.InputTokens == nil || *tCopilot.InputTokens != 200 {
-		t.Errorf("expected Copilot input tokens 200, got %v", tCopilot.InputTokens)
-	}
-
-	// Assert Antigravity DB results
-	turnsAntigravity, err := getTurns(t, dbPath, "sess-antigravity")
-	if err != nil || len(turnsAntigravity) != 1 {
-		t.Fatalf("failed to get Antigravity turns: %v", err)
-	}
-	tAntigravity := turnsAntigravity[0]
-	if tAntigravity.InputTokens == nil || *tAntigravity.InputTokens != 300 {
-		t.Errorf("expected Antigravity input tokens 300, got %v", tAntigravity.InputTokens)
-	}
-
-	// Assert model usages table as well
-	usagesClaude, err := getTurnModelUsages(t, dbPath, tClaude.ID)
-	if err != nil || len(usagesClaude) != 1 {
-		t.Fatalf("failed to get Claude model usages: %v", err)
-	}
-	if usagesClaude[0].Model != "claude-3-5-sonnet" {
-		t.Errorf("expected Claude model 'claude-3-5-sonnet', got %q", usagesClaude[0].Model)
+			usages := getTurnModelUsages(t, dbPath, trn.ID)
+			if len(usages) != 1 {
+				t.Fatalf("expected 1 model usage, got %d", len(usages))
+			}
+			if usages[0].Model != tc.expectedModel {
+				t.Errorf("expected model %q, got %q", tc.expectedModel, usages[0].Model)
+			}
+		})
 	}
 }
