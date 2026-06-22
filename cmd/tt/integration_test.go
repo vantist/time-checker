@@ -234,3 +234,69 @@ func TestIntegration_DBAssertHelpers(t *testing.T) {
 		t.Fatalf("expected 1 turn, got %d", len(turns))
 	}
 }
+
+func initGitRepo(t *testing.T, dir, branch string) {
+	t.Helper()
+	runCmd := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("failed to run git %v: %v, output: %s", args, err, string(out))
+		}
+	}
+	runCmd("init")
+	runCmd("config", "user.name", "Test User")
+	runCmd("config", "user.email", "test@example.com")
+
+	dummyFile := filepath.Join(dir, "README.md")
+	if err := os.WriteFile(dummyFile, []byte("# Mock Repo"), 0644); err != nil {
+		t.Fatalf("failed to write dummy file: %v", err)
+	}
+	runCmd("add", "README.md")
+	runCmd("commit", "-m", "initial commit")
+	runCmd("checkout", "-B", branch)
+}
+
+func TestIntegration_GitBranchRepair(t *testing.T) {
+	projDir := t.TempDir()
+	initGitRepo(t, projDir, "feature-abc")
+
+	home := t.TempDir()
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+
+	_, _, err := runTT(t, home, dbPath, "", "report")
+	if err != nil {
+		t.Fatalf("failed to initialize db: %v", err)
+	}
+
+	dbConn, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("failed to open db: %v", err)
+	}
+	defer dbConn.Close()
+
+	_, err = dbConn.Exec(`
+		INSERT INTO sessions (id, project, tool, model, started_at, branch)
+		VALUES ('sess-git-repair', ?, 'claude-code', 'claude-3-5', '2026-06-22T00:00:00Z', '')
+	`, projDir)
+	if err != nil {
+		t.Fatalf("failed to insert session: %v", err)
+	}
+
+	_, _, err = runTT(t, home, dbPath, "", "report")
+	if err != nil {
+		t.Logf("report run finished (might be empty): %v", err)
+	}
+
+	sess, err := getSession(t, dbPath, "sess-git-repair")
+	if err != nil {
+		t.Fatalf("failed to get session: %v", err)
+	}
+
+	if sess.Branch == nil {
+		t.Fatal("session branch is nil")
+	}
+	if *sess.Branch != "feature-abc" {
+		t.Fatalf("expected branch %q, got %q", "feature-abc", *sess.Branch)
+	}
+}
