@@ -2,7 +2,7 @@
 
 - [x] 1.1 實作 TestMain，在測試開始前編譯 tt 二進位檔，並在測試結束後清理臨時二進位檔與環境
 - [x] 1.2 實作 runTT 輔助函式，封裝 `exec.Command` 並設定隔離的環境變數 `HOME` 與 `TT_DB_PATH`
-- [ ] 1.3 實作 SQLite 資料庫查詢與驗證的斷言輔助函式，便於直接比對資料表中的 sessions 與 turns 欄位
+- [x] 1.3 實作 SQLite 資料庫查詢與驗證的斷言輔助函式，便於直接比對資料表中的 sessions 與 turns 欄位
 
 ## 2. 各整合測試案例實作
 
