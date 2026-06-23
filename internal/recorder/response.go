@@ -3,6 +3,7 @@ package recorder
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/user/tt/internal/pricing"
@@ -118,6 +119,38 @@ func RecordResponse(conn *sql.DB, sessionID, tokensJSON, model string, subagentT
 	)
 	if err != nil {
 		return err
+	}
+
+	// Parse and insert subagent usages when --subagent-tokens is provided.
+	subUsages, err := parseSubagentTokensJSON(subagentTokensJSON)
+	if err != nil {
+		return fmt.Errorf("parse --subagent-tokens: %w", err)
+	}
+	for _, su := range subUsages {
+		subCost := pricing.Calculate(su.Model, su.InputTokens, su.OutputTokens, su.CacheReadTokens, su.CacheCreationTokens, su.CacheCreation5m, su.CacheCreation1h)
+		var subCostVal float64
+		if subCost != nil {
+			subCostVal = *subCost
+		}
+		_, err = tx.Exec(`
+			INSERT OR REPLACE INTO turn_model_usages (
+				turn_id, model, is_subagent,
+				input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+				cache_creation_5m_tokens, cache_creation_1h_tokens, estimated_cost_usd
+			) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
+			turnID,
+			su.Model,
+			su.InputTokens,
+			su.OutputTokens,
+			su.CacheReadTokens,
+			su.CacheCreationTokens,
+			su.CacheCreation5m,
+			su.CacheCreation1h,
+			subCostVal,
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit()

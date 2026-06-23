@@ -319,3 +319,133 @@ func TestParseSubagentTokensJSON(t *testing.T) {
 		}
 	})
 }
+
+// Task 3.2: RecordResponse inserts subagent usages into turn_model_usages
+// when --subagent-tokens is provided. Each entry gets is_subagent = 1 and
+// turn_id关联 to the updated turn. Cost is calculated per subagent model.
+func TestRecordResponse_SubagentTokensInserted(t *testing.T) {
+	conn := openTestDB(t)
+
+	if err := recorder.RecordPrompt(conn, recorder.PromptInput{
+		SessionID: "sess-sub1",
+		Project:   "/proj",
+		Tool:      "opencode",
+		Model:     "claude-sonnet-4-6",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	mainTokens := `{"input_tokens":500,"output_tokens":100,"cache_read_tokens":0,"cache_creation_tokens":0}`
+	subTokens := `[{"model":"claude-haiku","agent":"build","input_tokens":100,"output_tokens":50,"cache_read_tokens":20}]`
+	if err := recorder.RecordResponse(conn, "sess-sub1", mainTokens, "claude-sonnet-4-6", subTokens); err != nil {
+		t.Fatalf("RecordResponse: %v", err)
+	}
+
+	// Should have 2 usages: 1 main (is_subagent=0) + 1 subagent (is_subagent=1)
+	var count int
+	conn.QueryRow("SELECT COUNT(*) FROM turn_model_usages").Scan(&count)
+	if count != 2 {
+		t.Fatalf("expected 2 turn_model_usages, got %d", count)
+	}
+
+	// Verify subagent entry
+	var model string
+	var isSubagent bool
+	var inputTok, outputTok, cacheRead int
+	var turnID int64
+	err := conn.QueryRow(`
+		SELECT turn_id, model, is_subagent, input_tokens, output_tokens, cache_read_tokens
+		FROM turn_model_usages WHERE is_subagent = 1
+	`).Scan(&turnID, &model, &isSubagent, &inputTok, &outputTok, &cacheRead)
+	if err != nil {
+		t.Fatalf("query subagent usage: %v", err)
+	}
+	if model != "claude-haiku" {
+		t.Errorf("subagent model = %q, want claude-haiku", model)
+	}
+	if !isSubagent {
+		t.Error("expected is_subagent = true")
+	}
+	if inputTok != 100 || outputTok != 50 || cacheRead != 20 {
+		t.Errorf("subagent tokens = in=%d out=%d cr=%d, want 100/50/20", inputTok, outputTok, cacheRead)
+	}
+	// turn_id must match the main turn
+	var mainTurnID int64
+	conn.QueryRow("SELECT id FROM turns WHERE session_id='sess-sub1'").Scan(&mainTurnID)
+	if turnID != mainTurnID {
+		t.Errorf("subagent turn_id = %d, want %d (main turn)", turnID, mainTurnID)
+	}
+}
+
+// Task 3.2: Multiple subagent entries (different models) each written with correct turn_id.
+func TestRecordResponse_SubagentTokensMultiple(t *testing.T) {
+	conn := openTestDB(t)
+
+	if err := recorder.RecordPrompt(conn, recorder.PromptInput{
+		SessionID: "sess-sub2",
+		Project:   "/proj",
+		Tool:      "opencode",
+		Model:     "claude-sonnet-4-6",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	mainTokens := `{"input_tokens":500,"output_tokens":100}`
+	subTokens := `[{"model":"claude-haiku","agent":"build","input_tokens":100,"output_tokens":50},` +
+		`{"model":"claude-opus-4-6","agent":"explore","input_tokens":80,"output_tokens":30}]`
+	if err := recorder.RecordResponse(conn, "sess-sub2", mainTokens, "claude-sonnet-4-6", subTokens); err != nil {
+		t.Fatalf("RecordResponse: %v", err)
+	}
+
+	var count int
+	conn.QueryRow("SELECT COUNT(*) FROM turn_model_usages WHERE is_subagent = 1").Scan(&count)
+	if count != 2 {
+		t.Fatalf("expected 2 subagent entries, got %d", count)
+	}
+
+	// Both share the same turn_id
+	var tid1, tid2 int64
+	rows, err := conn.Query("SELECT turn_id FROM turn_model_usages WHERE is_subagent = 1 ORDER BY id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	rows.Next()
+	rows.Scan(&tid1)
+	rows.Next()
+	rows.Scan(&tid2)
+	if tid1 != tid2 {
+		t.Errorf("subagent turn_ids differ: %d vs %d", tid1, tid2)
+	}
+}
+
+// Task 3.2: Empty --subagent-tokens produces only main agent usage (no is_subagent=1 rows).
+func TestRecordResponse_NoSubagentTokens(t *testing.T) {
+	conn := openTestDB(t)
+
+	if err := recorder.RecordPrompt(conn, recorder.PromptInput{
+		SessionID: "sess-sub3",
+		Project:   "/proj",
+		Tool:      "opencode",
+		Model:     "claude-sonnet-4-6",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	mainTokens := `{"input_tokens":500,"output_tokens":100}`
+	if err := recorder.RecordResponse(conn, "sess-sub3", mainTokens, "claude-sonnet-4-6", ""); err != nil {
+		t.Fatalf("RecordResponse: %v", err)
+	}
+
+	var subCount int
+	conn.QueryRow("SELECT COUNT(*) FROM turn_model_usages WHERE is_subagent = 1").Scan(&subCount)
+	if subCount != 0 {
+		t.Errorf("expected 0 subagent entries, got %d", subCount)
+	}
+
+	var mainCount int
+	conn.QueryRow("SELECT COUNT(*) FROM turn_model_usages WHERE is_subagent = 0").Scan(&mainCount)
+	if mainCount != 1 {
+		t.Errorf("expected 1 main agent entry, got %d", mainCount)
+	}
+}
