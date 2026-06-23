@@ -51,6 +51,13 @@ var tools = []toolInfo{
 		setup:    setup.SetupOpencode,
 		msg:      "OpenCode plugin configured in ~/.config/opencode/plugins/tt-bridge.ts",
 	},
+	{
+		flagName: "vscode-copilot",
+		desc:     "Set up VS Code Copilot bridge",
+		isActive: setup.IsVSCodeCopilotActive,
+		setup:    setup.SetupVSCodeCopilot,
+		msg:      "VS Code Copilot bridge installed",
+	},
 }
 
 func init() {
