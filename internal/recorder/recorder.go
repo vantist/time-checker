@@ -65,7 +65,10 @@ func RecordPrompt(conn *sql.DB, input PromptInput) error {
 	}
 
 	// Use stable session ID for turns so JOIN sessions s ON s.id = t.session_id works.
-	offset := countLines(input.TranscriptPath)
+	var offset interface{}
+	if input.TranscriptPath != "" {
+		offset = countLines(input.TranscriptPath)
+	}
 	var transcriptPath interface{}
 	if input.TranscriptPath != "" {
 		transcriptPath = input.TranscriptPath
