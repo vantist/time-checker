@@ -31,4 +31,4 @@
 ## 7. 開放問題驗證與建置
 
 - [ ] 7.1 實測開放問題 1（user message 是否帶 model）與開放問題 2（subagent 相對於主 response 的事件順序） against 真實 opencode；記錄結論，若 subagent 晚於主 response 完成則評估是否另開 change 補償。
-- [ ] 7.2 `go build ./...` 與 `go test ./...` 全綠。
+- [x] 7.2 `go build ./...` 與 `go test ./...` 全綠。
