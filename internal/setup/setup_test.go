@@ -716,6 +716,84 @@ func TestSetupCopilotReplacesOldVersion(t *testing.T) {
 	}
 }
 
+// Task 4.1: SetupOpencode creates plugin file on first run
+func TestSetupOpencodeFresh(t *testing.T) {
+	home := setupHome(t)
+
+	if err := setup.SetupOpencode(); err != nil {
+		t.Fatalf("SetupOpencode: %v", err)
+	}
+
+	pluginPath := filepath.Join(home, ".config", "opencode", "plugins", "tt-bridge.ts")
+	data, err := os.ReadFile(pluginPath)
+	if err != nil {
+		t.Fatalf("tt-bridge.ts not created: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("tt-bridge.ts is empty")
+	}
+	content := string(data)
+	if !strings.Contains(content, "message.updated") {
+		t.Error("plugin missing message.updated handler")
+	}
+	if !strings.Contains(content, "tt record prompt") {
+		t.Error("plugin missing tt record prompt call")
+	}
+	if !strings.Contains(content, "tt record response") {
+		t.Error("plugin missing tt record response call")
+	}
+}
+
+// Task 4.1: SetupOpencode is idempotent — second call does not overwrite
+func TestSetupOpencodeIdempotent(t *testing.T) {
+	home := setupHome(t)
+
+	if err := setup.SetupOpencode(); err != nil {
+		t.Fatalf("first SetupOpencode: %v", err)
+	}
+
+	pluginPath := filepath.Join(home, ".config", "opencode", "plugins", "tt-bridge.ts")
+	original, _ := os.ReadFile(pluginPath)
+
+	// Modify the file to simulate user customisation
+	customContent := append(original, []byte("// user custom\n")...)
+	os.WriteFile(pluginPath, customContent, 0o600)
+
+	if err := setup.SetupOpencode(); err != nil {
+		t.Fatalf("second SetupOpencode: %v", err)
+	}
+
+	data, _ := os.ReadFile(pluginPath)
+	if !strings.HasSuffix(string(data), "// user custom\n") {
+		t.Error("SetupOpencode overwrote user customisation")
+	}
+}
+
+// Task 4.1: SetupOpencode creates parent directories
+func TestSetupOpencodeCreatesDirs(t *testing.T) {
+	home := setupHome(t)
+
+	if err := setup.SetupOpencode(); err != nil {
+		t.Fatalf("SetupOpencode: %v", err)
+	}
+
+	dirInfo, err := os.Stat(filepath.Join(home, ".config", "opencode", "plugins"))
+	if err != nil {
+		t.Fatalf("plugins dir not created: %v", err)
+	}
+	if perm := dirInfo.Mode().Perm(); perm != 0o700 {
+		t.Errorf("plugins dir permissions = %o, want 0o700", perm)
+	}
+
+ fileInfo, err := os.Stat(filepath.Join(home, ".config", "opencode", "plugins", "tt-bridge.ts"))
+	if err != nil {
+		t.Fatalf("tt-bridge.ts not created: %v", err)
+	}
+	if perm := fileInfo.Mode().Perm(); perm != 0o600 {
+		t.Errorf("tt-bridge.ts permissions = %o, want 0o600", perm)
+	}
+}
+
 func TestIsActive(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -726,6 +804,7 @@ func TestIsActive(t *testing.T) {
 		{"Copilot", ".copilot", setup.IsCopilotActive},
 		{"Antigravity", ".gemini", setup.IsAntigravityActive},
 		{"Codex", ".codex", setup.IsCodexActive},
+		{"OpenCode", ".config/opencode", setup.IsOpenCodeActive},
 	}
 
 	for _, tc := range tests {
