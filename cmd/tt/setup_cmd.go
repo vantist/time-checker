@@ -44,6 +44,13 @@ var tools = []toolInfo{
 		setup:    setup.SetupCodex,
 		msg:      "OpenAI Codex hooks configured in ~/.codex/hooks.json",
 	},
+	{
+		flagName: "opencode",
+		desc:     "Set up OpenCode plugin",
+		isActive: setup.IsOpenCodeActive,
+		setup:    setup.SetupOpencode,
+		msg:      "OpenCode plugin configured in ~/.config/opencode/plugins/tt-bridge.ts",
+	},
 }
 
 func init() {

@@ -24,6 +24,7 @@ func runSetupCmd(t *testing.T, args []string) (string, error) {
 	setupCmd.Flags().Set("copilot", "false")
 	setupCmd.Flags().Set("antigravity", "false")
 	setupCmd.Flags().Set("codex", "false")
+	setupCmd.Flags().Set("opencode", "false")
 
 	// Capture stdout
 	oldStdout := os.Stdout
@@ -177,6 +178,45 @@ func TestSetupCmd_NoToolsDetected(t *testing.T) {
 	}
 
 	expectedMsg := "No supported AI tools detected..."
+	if !strings.Contains(output, expectedMsg) {
+		t.Errorf("output = %q, want message containing %q", output, expectedMsg)
+	}
+}
+
+func TestSetupCmd_OpenCode(t *testing.T) {
+	home := setupHome(t)
+
+	output, err := runSetupCmd(t, []string{"--opencode"})
+	if err != nil {
+		t.Fatalf("rootCmd Execute failed: %v", err)
+	}
+
+	expectedMsg := "OpenCode plugin configured in"
+	if !strings.Contains(output, expectedMsg) {
+		t.Errorf("output = %q, want message containing %q", output, expectedMsg)
+	}
+
+	// Verify file was actually created in temp home
+	pluginPath := filepath.Join(home, ".config", "opencode", "plugins", "tt-bridge.ts")
+	if _, err := os.Stat(pluginPath); err != nil {
+		t.Errorf("expected plugin file at %s, but stat failed: %v", pluginPath, err)
+	}
+}
+
+func TestSetupCmd_AutoDetect_OpenCode(t *testing.T) {
+	home := setupHome(t)
+
+	// Create opencode config directory
+	if err := os.MkdirAll(filepath.Join(home, ".config", "opencode"), 0o755); err != nil {
+		t.Fatalf("failed to create .config/opencode: %v", err)
+	}
+
+	output, err := runSetupCmd(t, []string{})
+	if err != nil {
+		t.Fatalf("rootCmd Execute failed: %v", err)
+	}
+
+	expectedMsg := "OpenCode plugin configured in"
 	if !strings.Contains(output, expectedMsg) {
 		t.Errorf("output = %q, want message containing %q", output, expectedMsg)
 	}
