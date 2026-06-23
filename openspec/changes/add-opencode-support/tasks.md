@@ -21,7 +21,7 @@
 
 ## 5. report 工具名正規化
 
-- [ ] 5.1 `cmd/tt/report_cmd.go` `normalizeAgentName`：新增 `"opencode"` → `"OpenCode"` 分支（置於其餘名稱 fallback 之前）。TDD：先寫失敗測試驗證 `opencode` / `OpenCode` 正規化為 `OpenCode`。
+- [x] 5.1 `cmd/tt/report_cmd.go` `normalizeAgentName`：新增 `"opencode"` → `"OpenCode"` 分支（置於其餘名稱 fallback 之前）。TDD：先寫失敗測試驗證 `opencode` / `OpenCode` 正規化為 `OpenCode`。
 
 ## 6. plugin template 與整合
 

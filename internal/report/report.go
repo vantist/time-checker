@@ -765,6 +765,8 @@ func normalizeAgentName(tool string) string {
 		return "Claude Code"
 	case "copilot-cli", "copilotcli", "copilot":
 		return "Copilot CLI"
+	case "opencode":
+		return "OpenCode"
 	default:
 		return tool
 	}

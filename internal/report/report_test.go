@@ -844,6 +844,8 @@ func TestNormalizeAgentName(t *testing.T) {
 		{"copilot-cli", "Copilot CLI"},
 		{"CopilotCli", "Copilot CLI"},
 		{"copilot", "Copilot CLI"},
+		{"opencode", "OpenCode"},
+		{"OpenCode", "OpenCode"},
 		{"", "unknown"},
 		{"   ", "unknown"},
 		{"My-Custom-Agent  ", "my-custom-agent"},
