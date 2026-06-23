@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import * as cp from 'child_process';
 
 interface SessionEvent {
@@ -140,7 +141,7 @@ function callTtRecord(type: 'prompt' | 'response', sessionId: string, timestamp:
 
 function getWorkspaceStoragePaths(): string[] {
     const paths: string[] = [];
-    const home = require('os').homedir();
+    const home = os.homedir();
     const platform = process.platform;
 
     if (platform === 'darwin') {

@@ -93,11 +93,7 @@ func SetupVSCodeCopilot() error {
 
 func findVSCodePath() string {
 	// Try common locations
-	paths := []string{
-		"code",
-		"/usr/local/bin/code",
-		"/usr/bin/code",
-	}
+	paths := []string{"code"}
 
 	if runtime.GOOS == "darwin" {
 		paths = append(paths,
@@ -106,6 +102,8 @@ func findVSCodePath() string {
 		)
 	} else if runtime.GOOS == "linux" {
 		paths = append(paths,
+			"/usr/local/bin/code",
+			"/usr/bin/code",
 			"/snap/bin/code",
 			"/usr/share/code/bin/code",
 		)
