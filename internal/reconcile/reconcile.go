@@ -246,33 +246,9 @@ func reconcileCopilotSession(conn *sql.DB, dt danglingTurn) error {
 
 	// Write cumulative value to the target turn.
 	target := turns[targetIdx]
-	var totalCostVal float64
-	var hasAnyCost bool
-	for _, u := range result.Usages {
-		costPtr := pricing.CalculateForUsage(u)
-		var costVal float64
-		if costPtr != nil {
-			costVal = *costPtr
-			totalCostVal += costVal
-			hasAnyCost = true
-		}
-		_, err = tx.Exec(`
-			INSERT INTO turn_model_usages (
-				turn_id, model, is_subagent,
-				input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-				cache_creation_5m_tokens, cache_creation_1h_tokens, estimated_cost_usd
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			target.id, u.Model, u.IsSubagent,
-			u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheCreationTokens,
-			u.CacheCreation5m, u.CacheCreation1h, costVal,
-		)
-		if err != nil {
-			return err
-		}
-	}
-	var totalCost *float64
-	if hasAnyCost {
-		totalCost = &totalCostVal
+	totalCost, err := writeTurnModelUsages(tx, target.id, result.Usages)
+	if err != nil {
+		return err
 	}
 
 	var targetRespAt time.Time
@@ -321,6 +297,38 @@ func reconcileCopilotSession(conn *sql.DB, dt danglingTurn) error {
 	}
 
 	return tx.Commit()
+}
+
+// writeTurnModelUsages inserts one row per ModelUsage into turn_model_usages for
+// the given turn and returns the total estimated cost (nil when no usage had a cost).
+func writeTurnModelUsages(tx *sql.Tx, turnID int64, usages []transcript.ModelUsage) (*float64, error) {
+	var totalCostVal float64
+	var hasAnyCost bool
+	for _, u := range usages {
+		costPtr := pricing.CalculateForUsage(u)
+		var costVal float64
+		if costPtr != nil {
+			costVal = *costPtr
+			totalCostVal += costVal
+			hasAnyCost = true
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO turn_model_usages (
+				turn_id, model, is_subagent,
+				input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+				cache_creation_5m_tokens, cache_creation_1h_tokens, estimated_cost_usd
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			turnID, u.Model, u.IsSubagent,
+			u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheCreationTokens,
+			u.CacheCreation5m, u.CacheCreation1h, costVal,
+		); err != nil {
+			return nil, err
+		}
+	}
+	if !hasAnyCost {
+		return nil, nil
+	}
+	return &totalCostVal, nil
 }
 
 func reconcileTurn(conn *sql.DB, dt danglingTurn) error {
@@ -373,44 +381,9 @@ func reconcileTurn(conn *sql.DB, dt danglingTurn) error {
 		return err
 	}
 
-	// Insert new usages
-	var totalCostVal float64
-	var hasAnyCost bool
-
-	for _, u := range result.Usages {
-		costPtr := pricing.CalculateForUsage(u)
-		var costVal float64
-		if costPtr != nil {
-			costVal = *costPtr
-			totalCostVal += costVal
-			hasAnyCost = true
-		}
-
-		_, err = tx.Exec(`
-			INSERT INTO turn_model_usages (
-				turn_id, model, is_subagent,
-				input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-				cache_creation_5m_tokens, cache_creation_1h_tokens, estimated_cost_usd
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			dt.id,
-			u.Model,
-			u.IsSubagent,
-			u.InputTokens,
-			u.OutputTokens,
-			u.CacheReadTokens,
-			u.CacheCreationTokens,
-			u.CacheCreation5m,
-			u.CacheCreation1h,
-			costVal,
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	var totalCost *float64
-	if hasAnyCost {
-		totalCost = &totalCostVal
+	totalCost, err := writeTurnModelUsages(tx, dt.id, result.Usages)
+	if err != nil {
+		return err
 	}
 
 	if dt.responseAt != nil {
