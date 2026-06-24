@@ -17,12 +17,12 @@
 
 ## 3. RC1 — Copilot session 級 token 歸因
 
-- [ ] 3.1 寫失敗測試：`reconcile_test.go` 新增 case——Copilot session 3 個 turn、`session.shutdown` 累計 `inputTokens=1000`、`outputTokens=500` → 期望最新 open turn `input_tokens=1000`、其餘兩 turn `input_tokens=0` 且 `subagent_tokens_settled=1`
-- [ ] 3.2 寫失敗測試：reconcile 冪等——同一 Copilot session 連續兩次 `MaybeReconcile`，第二次所有 turn token 值不變
-- [ ] 3.3 寫失敗測試：跨 shutdown——兩次 shutdown（累計 1000、1500）→ report 加總 = 1500
-- [ ] 3.4 在 `reconcile.go` 新增 Copilot 歸因函式：對 `tool='copilot-cli'` session，先清空所有 turn 的 token 欄位與 `turn_model_usages`，再將累計值寫到最新 open turn（`response_at IS NULL` 者；若無則最新 turn），其餘 turn 補 `input_tokens=0`、`output_tokens=0`、`response_at`（`nextPromptAt - 1ms` 或自身 `prompt_at`）、`subagent_tokens_settled=1`
-- [ ] 3.5 修改 `reconcile` 主流程：偵測 `tool='copilot-cli'` session 時呼叫歸因函式，跳過一般 `reconcileTurn` 邏輯
-- [ ] 3.6 跑 `go test ./internal/reconcile/` 確認 3.1/3.2/3.3 通過
+- [x] 3.1 寫失敗測試：`reconcile_test.go` 新增 case——Copilot session 3 個 turn、`session.shutdown` 累計 `inputTokens=1000`、`outputTokens=500` → 期望最新 open turn `input_tokens=1000`、其餘兩 turn `input_tokens=0` 且 `subagent_tokens_settled=1`
+- [x] 3.2 寫失敗測試：reconcile 冪等——同一 Copilot session 連續兩次 `MaybeReconcile`，第二次所有 turn token 值不變
+- [x] 3.3 寫失敗測試：跨 shutdown——兩次 shutdown（累計 1000、1500）→ report 加總 = 1500
+- [x] 3.4 在 `reconcile.go` 新增 Copilot 歸因函式：對 `tool='copilot-cli'` session，先清空所有 turn 的 token 欄位與 `turn_model_usages`，再將累計值寫到最新 open turn（`response_at IS NULL` 者；若無則最新 turn），其餘 turn 補 `input_tokens=0`、`output_tokens=0`、`response_at`（`nextPromptAt - 1ms` 或自身 `prompt_at`）、`subagent_tokens_settled=1`
+- [x] 3.5 修改 `reconcile` 主流程：偵測 `tool='copilot-cli'` session 時呼叫歸因函式，跳過一般 `reconcileTurn` 邏輯
+- [x] 3.6 跑 `go test ./internal/reconcile/` 確認 3.1/3.2/3.3 通過
 
 ## 4. RC5 — resolveModel provider 分流
 

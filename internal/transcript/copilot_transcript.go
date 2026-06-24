@@ -83,6 +83,9 @@ func (p *CopilotProvider) ExtractWindow(path string, fromOffset int, toOffset in
 			if mainModel == "" {
 				mainModel = event.Data.CurrentModel
 			}
+			// modelMetrics is a session-cumulative snapshot, not a per-event delta.
+			// Reset on each shutdown so only the latest cumulative value remains.
+			modelUsages = make(map[usageKey]ModelUsage)
 			for modelName, metrics := range event.Data.ModelMetrics {
 				isSub := false
 				if mainModel != "" && modelName != mainModel {

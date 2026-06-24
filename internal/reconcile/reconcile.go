@@ -128,9 +128,199 @@ func reconcile(conn *sql.DB) {
 	}
 	rows.Close()
 
+	// Copilot CLI sessions use session-level cumulative token attribution, handled
+	// once per session rather than per turn. Track which sessions have been processed.
+	processedCopilot := make(map[string]bool)
 	for _, dt := range turns {
+		if dt.tool == "copilot-cli" {
+			if processedCopilot[dt.sessionID] {
+				continue
+			}
+			_ = reconcileCopilotSession(conn, dt)
+			processedCopilot[dt.sessionID] = true
+			continue
+		}
 		_ = reconcileTurn(conn, dt)
 	}
+}
+
+// reconcileCopilotSession applies Copilot CLI session-level token attribution.
+// Copilot modelMetrics is a session-cumulative snapshot (not a per-turn delta),
+// so the latest cumulative value is written to the latest open turn (response_at
+// IS NULL; or the latest turn if all are closed) and all other turns are zeroed.
+// Idempotent: resets all turns then re-writes the same cumulative value.
+func reconcileCopilotSession(conn *sql.DB, dt danglingTurn) error {
+	p, ok := transcript.GetProvider("copilot-cli")
+	if !ok {
+		return fmt.Errorf("reconcile: copilot-cli provider not registered")
+	}
+	path := dt.transcriptPath
+	if path == "" {
+		derived := p.ResolvePath(dt.sessionID, "")
+		if _, err := os.Stat(expandHomePath(derived)); err != nil {
+			return nil // transcript missing → silent skip
+		}
+		path = derived
+	}
+
+	result, err := p.ExtractWindow(path, 0, -1)
+	if err != nil {
+		return err
+	}
+
+	rows, err := conn.Query(`
+		SELECT id, prompt_at, response_at,
+			(SELECT prompt_at FROM turns t2
+			 WHERE t2.session_id = t.session_id AND t2.id > t.id
+			 ORDER BY t2.id LIMIT 1) AS next_prompt_at
+		FROM turns t WHERE session_id = ? ORDER BY id ASC`, dt.sessionID)
+	if err != nil {
+		return err
+	}
+	type copiTurn struct {
+		id           int64
+		promptAt     time.Time
+		responseAt   *time.Time
+		nextPromptAt *time.Time
+	}
+	var turns []copiTurn
+	for rows.Next() {
+		var ct copiTurn
+		var promptAtStr string
+		var respAt, nextAt sql.NullString
+		if err := rows.Scan(&ct.id, &promptAtStr, &respAt, &nextAt); err != nil {
+			rows.Close()
+			return err
+		}
+		if t, err := time.Parse(time.RFC3339Nano, promptAtStr); err == nil {
+			ct.promptAt = t
+		}
+		if respAt.Valid {
+			if t, err := time.Parse(time.RFC3339Nano, respAt.String); err == nil {
+				ct.responseAt = &t
+			}
+		}
+		if nextAt.Valid {
+			if t, err := time.Parse(time.RFC3339Nano, nextAt.String); err == nil {
+				ct.nextPromptAt = &t
+			}
+		}
+		turns = append(turns, ct)
+	}
+	rows.Close()
+
+	if len(turns) == 0 {
+		return nil
+	}
+
+	// Latest open turn (response_at IS NULL); fallback to latest turn.
+	targetIdx := -1
+	for i, ct := range turns {
+		if ct.responseAt == nil {
+			targetIdx = i
+		}
+	}
+	if targetIdx == -1 {
+		targetIdx = len(turns) - 1
+	}
+
+	tx, err := conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Reset all turns' token fields and turn_model_usages for the session.
+	if _, err = tx.Exec(
+		`DELETE FROM turn_model_usages WHERE turn_id IN (SELECT id FROM turns WHERE session_id = ?)`,
+		dt.sessionID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(
+		`UPDATE turns SET input_tokens=NULL, output_tokens=NULL, cache_read_tokens=NULL,
+		 cache_creation_tokens=NULL, cache_creation_5m_tokens=NULL, cache_creation_1h_tokens=NULL,
+		 estimated_cost_usd=NULL WHERE session_id = ?`,
+		dt.sessionID); err != nil {
+		return err
+	}
+
+	// Write cumulative value to the target turn.
+	target := turns[targetIdx]
+	var totalCostVal float64
+	var hasAnyCost bool
+	for _, u := range result.Usages {
+		costPtr := pricing.CalculateForUsage(u)
+		var costVal float64
+		if costPtr != nil {
+			costVal = *costPtr
+			totalCostVal += costVal
+			hasAnyCost = true
+		}
+		_, err = tx.Exec(`
+			INSERT INTO turn_model_usages (
+				turn_id, model, is_subagent,
+				input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+				cache_creation_5m_tokens, cache_creation_1h_tokens, estimated_cost_usd
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			target.id, u.Model, u.IsSubagent,
+			u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheCreationTokens,
+			u.CacheCreation5m, u.CacheCreation1h, costVal,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	var totalCost *float64
+	if hasAnyCost {
+		totalCost = &totalCostVal
+	}
+
+	var targetRespAt time.Time
+	if target.nextPromptAt != nil {
+		targetRespAt = target.nextPromptAt.Add(-time.Millisecond)
+	} else {
+		targetRespAt = target.promptAt
+	}
+	if _, err = tx.Exec(
+		`UPDATE turns SET input_tokens=?, output_tokens=?, cache_read_tokens=?, cache_creation_tokens=?,
+		 cache_creation_5m_tokens=?, cache_creation_1h_tokens=?, model=?,
+		 estimated_cost_usd=?, response_at=?, subagent_tokens_settled=1 WHERE id=?`,
+		result.InputTokens(), result.OutputTokens(), result.CacheReadTokens(), result.CacheCreationTokens(),
+		result.CacheCreate5m(), result.CacheCreate1h(), result.Model(),
+		totalCost, targetRespAt.UTC().Format(time.RFC3339Nano), target.id,
+	); err != nil {
+		return err
+	}
+
+	// Zero out the other turns and close them.
+	for i, ct := range turns {
+		if i == targetIdx {
+			continue
+		}
+		var respAt time.Time
+		if ct.nextPromptAt != nil {
+			respAt = ct.nextPromptAt.Add(-time.Millisecond)
+		} else {
+			respAt = ct.promptAt
+		}
+		if _, err = tx.Exec(
+			`UPDATE turns SET input_tokens=0, output_tokens=0, subagent_tokens_settled=1, response_at=? WHERE id=?`,
+			respAt.UTC().Format(time.RFC3339Nano), ct.id,
+		); err != nil {
+			return err
+		}
+	}
+
+	if result.Model() != "" {
+		if _, err = tx.Exec(
+			`UPDATE sessions SET model=? WHERE id=? AND (model IS NULL OR model='')`,
+			result.Model(), dt.sessionID,
+		); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func reconcileTurn(conn *sql.DB, dt danglingTurn) error {

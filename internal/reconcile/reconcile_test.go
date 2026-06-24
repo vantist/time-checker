@@ -1022,7 +1022,178 @@ func TestReconcileCopilot_NullPathEntersFlow(t *testing.T) {
 	}
 }
 
-// TestReconcileCopilot_TranscriptMissingSilentSkip: when the derived Copilot
+// TestReconcileCopilot_SessionLevelAttribution: Copilot modelMetrics is a
+// session-cumulative value. With 3 turns and shutdown inputTokens=1000,
+// the cumulative value must land on the latest open turn only; the other
+// turns get input_tokens=0, output_tokens=0, subagent_tokens_settled=1.
+func TestReconcileCopilot_SessionLevelAttribution(t *testing.T) {
+	db := newTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	const sessionID = "copi-attrib"
+	_, err := db.Exec(`
+		INSERT INTO sessions (id, started_at, process_pid, process_start, tool)
+		VALUES (?, ?, ?, ?, ?)`,
+		sessionID, time.Now().UTC().Format(time.RFC3339), 0, 0, "copilot-cli",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writeCopilotEvents(t, home, sessionID, []string{
+		`{"type":"session.start","data":{}}`,
+		`{"type":"session.shutdown","data":{"mainModel":"","currentModel":"gpt-5","modelMetrics":{"gpt-5":{"usage":{"inputTokens":1000,"outputTokens":500}}}}}`,
+	})
+
+	base := time.Now().Add(-30 * time.Minute)
+	t1 := insertCopilotTurn(t, db, sessionID, base)
+	t2 := insertCopilotTurn(t, db, sessionID, base.Add(10*time.Minute))
+	t3 := insertCopilotTurn(t, db, sessionID, base.Add(20*time.Minute)) // latest open turn
+
+	reconcile(db)
+
+	type turnRow struct {
+		input   sql.NullInt64
+		output  sql.NullInt64
+		settled bool
+		respAt  sql.NullString
+	}
+	load := func(id int64) turnRow {
+		var r turnRow
+		err = db.QueryRow(`SELECT input_tokens, output_tokens, subagent_tokens_settled, response_at FROM turns WHERE id=?`, id).
+			Scan(&r.input, &r.output, &r.settled, &r.respAt)
+		if err != nil {
+			t.Fatalf("load turn %d: %v", id, err)
+		}
+		return r
+	}
+
+	r1, r2, r3 := load(t1), load(t2), load(t3)
+
+	if !r3.input.Valid || r3.input.Int64 != 1000 {
+		t.Errorf("latest open turn input_tokens = %v, want 1000", r3.input)
+	}
+	if !r3.output.Valid || r3.output.Int64 != 500 {
+		t.Errorf("latest open turn output_tokens = %v, want 500", r3.output)
+	}
+	if !r3.settled {
+		t.Error("latest open turn subagent_tokens_settled should be 1")
+	}
+
+	for _, r := range []turnRow{r1, r2} {
+		if !r.input.Valid || r.input.Int64 != 0 {
+			t.Errorf("non-latest turn input_tokens = %v, want 0", r.input)
+		}
+		if !r.output.Valid || r.output.Int64 != 0 {
+			t.Errorf("non-latest turn output_tokens = %v, want 0", r.output)
+		}
+		if !r.settled {
+			t.Error("non-latest turn subagent_tokens_settled should be 1")
+		}
+		if !r.respAt.Valid {
+			t.Error("non-latest turn response_at should be set")
+		}
+	}
+}
+
+// TestReconcileCopilot_Idempotent: two reconciles on the same Copilot session
+// produce identical token values (attribution resets and re-writes the same cumulative value).
+func TestReconcileCopilot_Idempotent(t *testing.T) {
+	db := newTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	const sessionID = "copi-idem"
+	_, err := db.Exec(`
+		INSERT INTO sessions (id, started_at, process_pid, process_start, tool)
+		VALUES (?, ?, ?, ?, ?)`,
+		sessionID, time.Now().UTC().Format(time.RFC3339), 0, 0, "copilot-cli",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writeCopilotEvents(t, home, sessionID, []string{
+		`{"type":"session.start","data":{}}`,
+		`{"type":"session.shutdown","data":{"mainModel":"","currentModel":"gpt-5","modelMetrics":{"gpt-5":{"usage":{"inputTokens":1000,"outputTokens":500}}}}}`,
+	})
+
+	base := time.Now().Add(-30 * time.Minute)
+	insertCopilotTurn(t, db, sessionID, base)
+	insertCopilotTurn(t, db, sessionID, base.Add(10*time.Minute))
+	t3 := insertCopilotTurn(t, db, sessionID, base.Add(20*time.Minute))
+
+	reconcile(db)
+
+	var input1, output1 sql.NullInt64
+	db.QueryRow("SELECT input_tokens, output_tokens FROM turns WHERE id=?", t3).Scan(&input1, &output1)
+
+	reconcile(db)
+
+	var input2, output2 sql.NullInt64
+	db.QueryRow("SELECT input_tokens, output_tokens FROM turns WHERE id=?", t3).Scan(&input2, &output2)
+
+	if input1.Int64 != input2.Int64 || output1.Int64 != output2.Int64 {
+		t.Errorf("not idempotent: first=(%d,%d) second=(%d,%d)", input1.Int64, output1.Int64, input2.Int64, output2.Int64)
+	}
+	if input2.Int64 != 1000 || output2.Int64 != 500 {
+		t.Errorf("cumulative value wrong after second reconcile: got (%d,%d), want (1000,500)", input2.Int64, output2.Int64)
+	}
+}
+
+// TestReconcileCopilot_CrossShutdownLatestCumulative: two shutdowns with
+// cumulative inputTokens 1000 then 1500 → report total = 1500 (latest, not 2500).
+func TestReconcileCopilot_CrossShutdownLatestCumulative(t *testing.T) {
+	db := newTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	const sessionID = "copi-cross"
+	_, err := db.Exec(`
+		INSERT INTO sessions (id, started_at, process_pid, process_start, tool)
+		VALUES (?, ?, ?, ?, ?)`,
+		sessionID, time.Now().UTC().Format(time.RFC3339), 0, 0, "copilot-cli",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writeCopilotEvents(t, home, sessionID, []string{
+		`{"type":"session.start","data":{}}`,
+		`{"type":"session.shutdown","data":{"mainModel":"","currentModel":"gpt-5","modelMetrics":{"gpt-5":{"usage":{"inputTokens":1000,"outputTokens":300}}}}}`,
+		`{"type":"session.shutdown","data":{"mainModel":"","currentModel":"gpt-5","modelMetrics":{"gpt-5":{"usage":{"inputTokens":1500,"outputTokens":400}}}}}`,
+	})
+
+	t1 := insertCopilotTurn(t, db, sessionID, time.Now().Add(-20*time.Minute))
+	t2 := insertCopilotTurn(t, db, sessionID, time.Now().Add(-10*time.Minute))
+
+	reconcile(db)
+
+	var totalInput, totalOutput sql.NullInt64
+	err = db.QueryRow("SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0) FROM turns WHERE session_id=?", sessionID).Scan(&totalInput, &totalOutput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if totalInput.Int64 != 1500 {
+		t.Errorf("session total input_tokens = %d, want 1500 (latest cumulative, not 2500)", totalInput.Int64)
+	}
+	if totalOutput.Int64 != 400 {
+		t.Errorf("session total output_tokens = %d, want 400 (latest cumulative, not 700)", totalOutput.Int64)
+	}
+
+	// Latest open turn (t2) holds the cumulative value; t1 is zeroed.
+	var t1Input sql.NullInt64
+	db.QueryRow("SELECT input_tokens FROM turns WHERE id=?", t1).Scan(&t1Input)
+	if t1Input.Int64 != 0 {
+		t.Errorf("non-latest turn input_tokens = %d, want 0", t1Input.Int64)
+	}
+	var t2Input sql.NullInt64
+	db.QueryRow("SELECT input_tokens FROM turns WHERE id=?", t2).Scan(&t2Input)
+	if t2Input.Int64 != 1500 {
+		t.Errorf("latest open turn input_tokens = %d, want 1500", t2Input.Int64)
+	}
+}
 // transcript path does not exist, reconcile must silently skip the turn.
 func TestReconcileCopilot_TranscriptMissingSilentSkip(t *testing.T) {
 	db := newTestDB(t)
