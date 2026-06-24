@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.13.0](https://github.com/vantist/time-tracker/compare/v1.12.0...v1.13.0) (2026-06-24)
+
+
+### Features
+
+* **reconcile:** attribute Copilot CLI session-level cumulative tokens to latest open turn ([7925474](https://github.com/vantist/time-tracker/commit/792547471c46f7bf048b5a6e65a12a1b57bbde73))
+* **setup:** resolve tt binary path in hooks, add TT_BIN env var ([b5c6d25](https://github.com/vantist/time-tracker/commit/b5c6d2519e1091401128ff972f8b68d5e08376c4))
+
+
+### Bug Fixes
+
+* **reconcile:** admit Copilot CLI turns with NULL transcript_path into reconcile ([73aaa2a](https://github.com/vantist/time-tracker/commit/73aaa2afbeb303f219a7956dece20487efc355bd))
+* **reconcile:** resolve Copilot model via provider instead of Claude/Antigravity fallback ([b036d9b](https://github.com/vantist/time-tracker/commit/b036d9b36da5800f3d0b7b8ef004f5e7ba248d76))
+* **transcript:** fallback to currentModel when mainModel empty in Copilot shutdown parsers ([08a5633](https://github.com/vantist/time-tracker/commit/08a5633c82924f871ad07cd3d3ba80adfbdf8d16))
+
 ## [1.12.0](https://github.com/vantist/time-tracker/compare/v1.11.0...v1.12.0) (2026-06-24)
 
 
