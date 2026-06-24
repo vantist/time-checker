@@ -957,6 +957,55 @@ func TestRepairSessions_InvalidProject(t *testing.T) {
 	}
 }
 
+// TestRepairSessions_CopilotModelViaProvider: a copilot-cli session with empty
+// model and no transcript_path in turns must still get its model resolved from
+// ~/.copilot/session-state/<sessionID>/events.jsonl via CopilotProvider, not
+// fall back to Antigravity settings.json or gemini-3.5-flash.
+func TestRepairSessions_CopilotModelViaProvider(t *testing.T) {
+	db := newTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	// Plant an Antigravity settings.json to ensure the fallback is NOT used.
+	cliConfigDir := filepath.Join(home, ".gemini", "antigravity-cli")
+	if err := os.MkdirAll(cliConfigDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cliConfigDir, "settings.json"), []byte(`{"model": "Gemini 3.5 Flash"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	const sessionID = "copi-repair-model"
+	_, err := db.Exec(`
+		INSERT INTO sessions (id, started_at, process_pid, process_start, tool, project, model, branch)
+		VALUES (?, ?, ?, ?, ?, ?, '', ?)`,
+		sessionID, time.Now().UTC().Format(time.RFC3339), 0, 0, "copilot-cli",
+		"/some/valid/project", "main",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writeCopilotEvents(t, home, sessionID, []string{
+		`{"type":"session.start","data":{}}`,
+		`{"type":"session.shutdown","data":{"mainModel":"","currentModel":"gpt-5","modelMetrics":{"gpt-5":{"usage":{"inputTokens":10,"outputTokens":5}}}}}`,
+	})
+
+	// Turn with NULL transcript_path — findExistingTranscriptPath will return false.
+	insertCopilotTurn(t, db, sessionID, time.Now().Add(-10*time.Minute))
+
+	repairSessions(db)
+
+	var model sql.NullString
+	err = db.QueryRow("SELECT model FROM sessions WHERE id=?", sessionID).Scan(&model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !model.Valid || model.String != "gpt-5" {
+		t.Errorf("sessions.model = %q, want %q (from Copilot currentModel, not gemini-3.5-flash fallback)", model.String, "gpt-5")
+	}
+}
+
 func initGitRepo(t *testing.T, dir string, branch string) {
 	t.Helper()
 	runCmd := func(args ...string) {

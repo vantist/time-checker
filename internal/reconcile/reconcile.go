@@ -521,7 +521,18 @@ func repairSessions(db *sql.DB) {
 		newBranch := s.branch
 
 		if s.project == "" || isInvalidProject(s.project) || s.model == "" {
-			if pathToRead, found := findExistingTranscriptPath(db, s.id); found {
+			pathToRead, found := findExistingTranscriptPath(db, s.id)
+			// Copilot CLI turns have NULL transcript_path; derive it from sessionID.
+			if !found && s.tool == "copilot-cli" {
+				if p, ok := transcript.GetProvider("copilot-cli"); ok {
+					derived := p.ResolvePath(s.id, "")
+					if _, err := os.Stat(expandHomePath(derived)); err == nil {
+						pathToRead = derived
+						found = true
+					}
+				}
+			}
+			if found {
 				if s.project == "" || isInvalidProject(s.project) {
 					if homeDir, err := os.UserHomeDir(); err == nil {
 						newProject = resolveProjectPath(pathToRead, homeDir)
@@ -698,15 +709,19 @@ func findProjectRoot(path string) (string, bool) {
 }
 
 func resolveModel(path string, tool string) string {
-	if tool == "antigravity" {
-		if res, err := transcript.ParseAntigravityLog(path); err == nil && res.Model() != "" {
+	if p, ok := transcript.GetProvider(tool); ok {
+		if res, err := p.ExtractWindow(path, 0, -1); err == nil && res.Model() != "" && res.Model() != "unknown" {
 			return res.Model()
 		}
-	} else if res, err := transcript.ExtractWindow(path, 0, -1); err == nil && res.Model() != "" && res.Model() != "unknown" {
-		return res.Model()
 	}
 
-	// Fallback to settings.json
+	// Copilot CLI sessions must not fall back to Antigravity settings.json or
+	// the gemini-3.5-flash default; return empty so the next repair pass retries.
+	if tool == "copilot-cli" {
+		return ""
+	}
+
+	// Fallback to settings.json for non-Copilot tools (primarily Antigravity).
 	if home, err := os.UserHomeDir(); err == nil {
 		for _, name := range []string{"antigravity-cli", "antigravity"} {
 			p := filepath.Join(home, ".gemini", name, "settings.json")

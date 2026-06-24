@@ -26,10 +26,10 @@
 
 ## 4. RC5 — resolveModel provider 分流
 
-- [ ] 4.1 寫失敗測試：`reconcile_test.go` 新增 case——`tool='copilot-cli'` session 的 `turns.model` 為空或 `gemini-3.5-flash`，`events.jsonl` 含 `session.shutdown` 的 `currentModel="gpt-5"` → 期望 `repairSessions` 後 `turns.model="gpt-5"`
-- [ ] 4.2 修改 `resolveModel`：改用 `GetProvider(tool).ExtractWindow` 取代寫死 Claude Code parser；移除 Antigravity `settings.json` fallback 對 Copilot session 的觸發
-- [ ] 4.3 修改 `repairSessions`：對 `tool='copilot-cli'` session，當 `findExistingTranscriptPath` 回空時改用 `CopilotProvider.ResolvePath(sessionID, "")` 推導 path 餵給 `resolveModel`
-- [ ] 4.4 跑 `go test ./internal/reconcile/ -run TestRepairSessions` 確認 4.1 通過
+- [x] 4.1 寫失敗測試：`reconcile_test.go` 新增 case——`tool='copilot-cli'` session 的 `turns.model` 為空或 `gemini-3.5-flash`，`events.jsonl` 含 `session.shutdown` 的 `currentModel="gpt-5"` → 期望 `repairSessions` 後 `turns.model="gpt-5"`
+- [x] 4.2 修改 `resolveModel`：改用 `GetProvider(tool).ExtractWindow` 取代寫死 Claude Code parser；移除 Antigravity `settings.json` fallback 對 Copilot session 的觸發
+- [x] 4.3 修改 `repairSessions`：對 `tool='copilot-cli'` session，當 `findExistingTranscriptPath` 回空時改用 `CopilotProvider.ResolvePath(sessionID, "")` 推導 path 餵給 `resolveModel`
+- [x] 4.4 跑 `go test ./internal/reconcile/ -run TestRepairSessions` 確認 4.1 通過
 
 ## 5. 整合驗證
 
