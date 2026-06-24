@@ -10,10 +10,10 @@
 
 ## 2. RC1 — reconcile WHERE 放寬 + path 自推
 
-- [ ] 2.1 寫失敗測試：`reconcile_test.go` 新增 Copilot session 案例——`tool='copilot-cli'`、`transcript_path=NULL`、`prompt_line_offset=NULL`、`input_tokens=NULL`，`events.jsonl` 含 `session.shutdown` → 期望 reconcile 後該 turn 進入處理流程（非 skip）
-- [ ] 2.2 修改 `internal/reconcile/reconcile.go` 的 `reconcile` SQL：WHERE 條件新增 `OR s.tool='copilot-cli'`（保留原 `transcript_path IS NOT NULL AND prompt_line_offset IS NOT NULL` 條件）
-- [ ] 2.3 修改 `reconcileTurn`：`dt.transcriptPath == ""` 時呼叫 `GetProvider(dt.tool).ResolvePath(dt.sessionID, "")` 推導 path；`os.Stat` 失敗則靜默 skip
-- [ ] 2.4 跑 `go test ./internal/reconcile/ -run TestReconcileCopilot` 確認 2.1 通過（此階段尚未做歸因，先驗證 turn 進入流程且 path 推導正確）
+- [x] 2.1 寫失敗測試：`reconcile_test.go` 新增 Copilot session 案例——`tool='copilot-cli'`、`transcript_path=NULL`、`prompt_line_offset=NULL`、`input_tokens=NULL`，`events.jsonl` 含 `session.shutdown` → 期望 reconcile 後該 turn 進入處理流程（非 skip）
+- [x] 2.2 修改 `internal/reconcile/reconcile.go` 的 `reconcile` SQL：WHERE 條件新增 `OR s.tool='copilot-cli'`（保留原 `transcript_path IS NOT NULL AND prompt_line_offset IS NOT NULL` 條件）
+- [x] 2.3 修改 `reconcileTurn`：`dt.transcriptPath == ""` 時呼叫 `GetProvider(dt.tool).ResolvePath(dt.sessionID, "")` 推導 path；`os.Stat` 失敗則靜默 skip
+- [x] 2.4 跑 `go test ./internal/reconcile/ -run TestReconcileCopilot` 確認 2.1 通過（此階段尚未做歸因，先驗證 turn 進入流程且 path 推導正確）
 
 ## 3. RC1 — Copilot session 級 token 歸因
 

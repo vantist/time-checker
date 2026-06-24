@@ -94,8 +94,10 @@ func reconcile(conn *sql.DB) {
 		FROM turns t
 		JOIN sessions s ON s.id = t.session_id
 		WHERE (t.response_at IS NULL OR t.input_tokens IS NULL OR t.subagent_tokens_settled = 0)
-		  AND t.transcript_path IS NOT NULL
-		  AND t.prompt_line_offset IS NOT NULL
+		  AND (
+			(t.transcript_path IS NOT NULL AND t.prompt_line_offset IS NOT NULL)
+			OR s.tool = 'copilot-cli'
+		  )
 	`)
 	if err != nil {
 		return
@@ -105,14 +107,22 @@ func reconcile(conn *sql.DB) {
 	var turns []danglingTurn
 	for rows.Next() {
 		var dt danglingTurn
+		var transcriptPath sql.NullString
+		var promptLineOffset sql.NullInt64
 		err := rows.Scan(
-			&dt.id, &dt.sessionID, &dt.transcriptPath, &dt.promptLineOffset, &dt.promptAt,
+			&dt.id, &dt.sessionID, &transcriptPath, &promptLineOffset, &dt.promptAt,
 			&dt.responseAt,
 			&dt.processPID, &dt.processStart, &dt.tool,
 			&dt.nextOffset, &dt.nextTranscriptPath, &dt.nextPromptAt,
 		)
 		if err != nil {
 			continue
+		}
+		if transcriptPath.Valid {
+			dt.transcriptPath = transcriptPath.String
+		}
+		if promptLineOffset.Valid {
+			dt.promptLineOffset = int(promptLineOffset.Int64)
 		}
 		turns = append(turns, dt)
 	}
@@ -143,6 +153,15 @@ func reconcileTurn(conn *sql.DB, dt danglingTurn) error {
 	p, ok := transcript.GetProvider(tool)
 	if !ok {
 		return fmt.Errorf("reconcile: unknown provider for tool %q", tool)
+	}
+
+	// Copilot CLI turns have NULL transcript_path; derive it from sessionID via the provider.
+	if dt.transcriptPath == "" {
+		derived := p.ResolvePath(dt.sessionID, "")
+		if _, err := os.Stat(expandHomePath(derived)); err != nil {
+			return nil // transcript missing → silent skip
+		}
+		dt.transcriptPath = derived
 	}
 
 	result, err := p.ExtractWindow(dt.transcriptPath, dt.promptLineOffset, to)

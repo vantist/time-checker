@@ -96,6 +96,41 @@ func insertTurn(t *testing.T, db *sql.DB, sessionID, transcriptPath string, offs
 	return id
 }
 
+// insertCopilotTurn inserts a Copilot CLI turn with NULL transcript_path and
+// prompt_line_offset, mirroring the real recorder behavior when the
+// userPromptSubmitted hook stdin omits transcriptPath.
+func insertCopilotTurn(t *testing.T, db *sql.DB, sessionID string, promptAt time.Time) int64 {
+	t.Helper()
+	res, err := db.Exec(
+		`INSERT INTO turns (session_id, prompt_at) VALUES (?, ?)`,
+		sessionID, promptAt.UTC().Format(time.RFC3339Nano),
+	)
+	if err != nil {
+		t.Fatalf("insert copilot turn: %v", err)
+	}
+	id, _ := res.LastInsertId()
+	return id
+}
+
+// writeCopilotEvents writes an events.jsonl at ~/.copilot/session-state/<sessionID>/
+// under the given home dir, returning the session-state dir.
+func writeCopilotEvents(t *testing.T, home, sessionID string, lines []string) {
+	t.Helper()
+	dir := filepath.Join(home, ".copilot", "session-state", sessionID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir copilot session-state: %v", err)
+	}
+	path := filepath.Join(dir, "events.jsonl")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("create events.jsonl: %v", err)
+	}
+	for _, l := range lines {
+		f.WriteString(l + "\n")
+	}
+	f.Close()
+}
+
 func writeTranscriptLines(t *testing.T, dir string, lines []string) string {
 	t.Helper()
 	path := filepath.Join(dir, "transcript.jsonl")
@@ -944,6 +979,82 @@ func initGitRepo(t *testing.T, dir string, branch string) {
 
 	runCmd("add", "dummy")
 	runCmd("commit", "-m", "initial commit")
+}
+
+// TestReconcileCopilot_NullPathEntersFlow: a Copilot CLI turn with NULL
+// transcript_path and prompt_line_offset must enter the reconcile flow when
+// ~/.copilot/session-state/<sessionID>/events.jsonl contains session.shutdown.
+func TestReconcileCopilot_NullPathEntersFlow(t *testing.T) {
+	db := newTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	const sessionID = "copi-null-path"
+	_, err := db.Exec(`
+		INSERT INTO sessions (id, started_at, process_pid, process_start, tool)
+		VALUES (?, ?, ?, ?, ?)`,
+		sessionID, time.Now().UTC().Format(time.RFC3339), 0, 0, "copilot-cli",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	writeCopilotEvents(t, home, sessionID, []string{
+		`{"type":"session.start","data":{}}`,
+		`{"type":"session.shutdown","data":{"mainModel":"","currentModel":"gpt-5","modelMetrics":{"gpt-5":{"usage":{"inputTokens":1000,"outputTokens":500}}}}}`,
+	})
+
+	turnID := insertCopilotTurn(t, db, sessionID, time.Now().Add(-10*time.Minute))
+
+	reconcile(db)
+
+	var inputTokens sql.NullInt64
+	var responseAt sql.NullString
+	err = db.QueryRow("SELECT input_tokens, response_at FROM turns WHERE id=?", turnID).Scan(&inputTokens, &responseAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inputTokens.Valid || inputTokens.Int64 != 1000 {
+		t.Errorf("input_tokens = %v, want 1000 (turn must enter reconcile flow, not skip)", inputTokens)
+	}
+	if !responseAt.Valid {
+		t.Error("response_at should be set after reconcile (turn entered flow)")
+	}
+}
+
+// TestReconcileCopilot_TranscriptMissingSilentSkip: when the derived Copilot
+// transcript path does not exist, reconcile must silently skip the turn.
+func TestReconcileCopilot_TranscriptMissingSilentSkip(t *testing.T) {
+	db := newTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	const sessionID = "copi-no-transcript"
+	_, err := db.Exec(`
+		INSERT INTO sessions (id, started_at, process_pid, process_start, tool)
+		VALUES (?, ?, ?, ?, ?)`,
+		sessionID, time.Now().UTC().Format(time.RFC3339), 0, 0, "copilot-cli",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	turnID := insertCopilotTurn(t, db, sessionID, time.Now().Add(-10*time.Minute))
+
+	reconcile(db)
+
+	var inputTokens sql.NullInt64
+	var responseAt sql.NullString
+	err = db.QueryRow("SELECT input_tokens, response_at FROM turns WHERE id=?", turnID).Scan(&inputTokens, &responseAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inputTokens.Valid {
+		t.Errorf("input_tokens = %v, want NULL (transcript missing → silent skip)", inputTokens)
+	}
+	if responseAt.Valid {
+		t.Error("response_at should remain NULL when transcript missing")
+	}
 }
 
 
