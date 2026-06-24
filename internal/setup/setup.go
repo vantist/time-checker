@@ -6,33 +6,60 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
-var ttHooks = map[string][]any{
-	"UserPromptSubmit": {
-		map[string]any{
-			"_owner": "tt",
-			"hooks": []any{
-				map[string]any{
-					"type":    "command",
-					"command": "tt record prompt",
-				},
-			},
-		},
-	},
-	"Stop": {
-		map[string]any{
-			"_owner": "tt",
-			"hooks": []any{
-				map[string]any{"type": "command", "command": "tt record response"},
-			},
-		},
-	},
+// ttBin resolves the tt binary path: TT_BIN env var > os.Executable() > "tt".
+func ttBin() string {
+	if bin := os.Getenv("TT_BIN"); bin != "" {
+		return bin
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return "tt"
+	}
+	return exe
+}
+
+// ttCmd builds a hook command string using the resolved tt binary path.
+func ttCmd(subcmd string) string {
+	bin := ttBin()
+	// Quote binary path if it contains spaces (Windows).
+	if strings.Contains(bin, " ") {
+		if runtime.GOOS == "windows" {
+			bin = `"` + bin + `"`
+		} else {
+			bin = `'` + bin + `'`
+		}
+	}
+	return bin + " " + subcmd
 }
 
 func SetupClaudeCode() error {
+	hooks := map[string][]any{
+		"UserPromptSubmit": {
+			map[string]any{
+				"_owner": "tt",
+				"hooks": []any{
+					map[string]any{
+						"type":    "command",
+						"command": ttCmd("record prompt"),
+					},
+				},
+			},
+		},
+		"Stop": {
+			map[string]any{
+				"_owner": "tt",
+				"hooks": []any{
+					map[string]any{"type": "command", "command": ttCmd("record response")},
+				},
+			},
+		},
+	}
 	updater := func(settings map[string]any) (map[string]any, error) {
-		return updateSection(settings, "hooks", ttHooks), nil
+		return updateSection(settings, "hooks", hooks), nil
 	}
 	return setupToolHooks(filepath.Join(".claude", "settings.json"), updater)
 }
@@ -44,14 +71,14 @@ func SetupAntigravity() error {
 				map[string]any{
 					"_owner":  "tt",
 					"type":    "command",
-					"command": "tt record prompt --tool antigravity",
+					"command": ttCmd("record prompt --tool antigravity"),
 				},
 			},
 			"Stop": {
 				map[string]any{
 					"_owner":  "tt",
 					"type":    "command",
-					"command": "tt record response --tool antigravity",
+					"command": ttCmd("record response --tool antigravity"),
 				},
 			},
 		}
@@ -67,14 +94,14 @@ func SetupCodex() error {
 				map[string]any{
 					"_owner":  "tt",
 					"type":    "command",
-					"command": "tt record prompt --tool codex",
+					"command": ttCmd("record prompt --tool codex"),
 				},
 			},
 			"Stop": {
 				map[string]any{
 					"_owner":  "tt",
 					"type":    "command",
-					"command": "tt record response --tool codex",
+					"command": ttCmd("record response --tool codex"),
 				},
 			},
 		}
@@ -91,14 +118,14 @@ func SetupCopilot() error {
 				map[string]any{
 					"_owner":  "tt",
 					"type":    "command",
-					"command": "tt record prompt --tool copilot-cli",
+					"command": ttCmd("record prompt --tool copilot-cli"),
 				},
 			},
 			"agentStop": {
 				map[string]any{
 					"_owner":  "tt",
 					"type":    "command",
-					"command": "tt record response --tool copilot-cli",
+					"command": ttCmd("record response --tool copilot-cli"),
 				},
 			},
 		}

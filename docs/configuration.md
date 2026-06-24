@@ -12,6 +12,7 @@
 | `PROCESS_PID` | `Integer` | 無 (自動偵測) | 供 AI 工具 Hook 呼叫時傳入，代表呼叫端 Process 的 PID。若與 `PROCESS_START` 共同提供，會覆寫預設自動偵測的父行程 PID（即 `os.Getppid()`），用於精確對應工作會話。 |
 | `PROCESS_START` | `Integer` | 無 (自動偵測) | 供 AI 工具 Hook 呼叫時傳入，代表呼叫端 Process 的啟動時間戳記（Unix Nano）。配合 `PROCESS_PID` 用於防止 PID 重用（PID reuse）造成的 Session 誤判。若未提供，則退回以 `process.StartTime(ppid)` 自動取得父行程啟動時間。 |
 | `ORCA_WORKSPACE_ID` | `String` (格式為 `owner::path`) | 無 | 專案目錄後備解析變數。當前專案目錄未指定或判定為無效路徑（如路徑包含 `.gemini`、`.claude`、`.copilot`）時，系統會以 `::` 分割此變數並提取後半部的 `path`。若其為有效目錄，則覆寫當前 `project` 工作目錄。 |
+| `TT_BIN` | `String` (檔案路徑) | 無 (自動偵測) | 覆寫 `tt` 二進位檔案的路徑。當 AI 工具 Hook 無法在 PATH 中找到 `tt` 時（如 VS Code Copilot Chat、OpenCode 等非 shell 環境），可設定此變數指向 `tt` 的完整路徑（例如 `/usr/local/bin/tt` 或 `~/.local/bin/tt`）。在執行 `tt setup` 時也會參考此變數，將絕對路徑嵌入 Hook 設定中。 |
 | `ORCA_WORKTREE_ID` | `String` (格式為 `owner::path`) | 無 | 專案目錄後備解析變數。當 `ORCA_WORKSPACE_ID` 未能成功解析出有效目錄時，系統將此變數作為 fallback 進行與上述相同的解析及目錄檢查。 |
 
 ---

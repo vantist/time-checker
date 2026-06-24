@@ -110,8 +110,35 @@ function handleTranscriptChange(filePath: string) {
     handleNewTranscript(filePath);
 }
 
+function findTtBin(): string {
+    // 1. Check TT_BIN env var
+    const envBin = process.env.TT_BIN;
+    if (envBin) {
+        if (fs.existsSync(envBin)) return envBin;
+        outputChannel.appendLine(`TT_BIN set to "${envBin}" but not found, falling back`);
+    }
+
+    // 2. Check common install locations
+    const home = os.homedir();
+    const candidates = [
+        path.join(home, '.local', 'bin', 'tt'),
+        path.join(home, 'bin', 'tt'),
+        path.join(home, 'go', 'bin', 'tt'),
+        '/usr/local/bin/tt',
+        '/opt/homebrew/bin/tt',
+    ];
+
+    for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) return candidate;
+    }
+
+    // 3. Fallback — rely on PATH
+    return 'tt';
+}
+
 function callTtRecord(type: 'prompt' | 'response', sessionId: string, timestamp: number) {
     const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd();
+    const ttBin = findTtBin();
 
     const args = [
         'record', type,
@@ -120,17 +147,17 @@ function callTtRecord(type: 'prompt' | 'response', sessionId: string, timestamp:
         '--project', workspaceFolder,
     ];
 
-    outputChannel.appendLine(`Calling: tt ${args.join(' ')}`);
+    outputChannel.appendLine(`Calling: ${ttBin} ${args.join(' ')}`);
 
     try {
-        const result = cp.spawnSync('tt', args, {
+        const result = cp.spawnSync(ttBin, args, {
             encoding: 'utf-8',
             timeout: 5000,
         });
 
         if (result.error) {
             outputChannel.appendLine(`tt not found or error: ${result.error.message}`);
-            outputChannel.appendLine('Make sure tt is installed and in your PATH');
+            outputChannel.appendLine('Set TT_BIN env var to the full path of tt, or install tt in ~/.local/bin/');
         } else if (result.status !== 0) {
             outputChannel.appendLine(`tt exited with status ${result.status}: ${result.stderr}`);
         }

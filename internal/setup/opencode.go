@@ -10,6 +10,7 @@ import (
 var opencodePluginTemplate = `"use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 var child_process_1 = require("child_process");
+var ttBin = process.env.TT_BIN || "tt";
 var seen = new Set();
 var pendingSubTokens = {};
 function resolveProject(directory) {
@@ -36,7 +37,7 @@ function default_1(info) {
                 var model = ((_e = info.model) === null || _e === void 0 ? void 0 : _e.modelID) !== null && ((_f = info.model) === null || _f === void 0 ? void 0 : _f.modelID) !== void 0 ? (_e = info.model) === null || _e === void 0 ? void 0 : _e.modelID : "";
                 var project = resolveProject(directory);
                 try {
-                    child_process_1.execSync("tt record prompt --tool opencode --session " + JSON.stringify(sessionID) + " --project " + JSON.stringify(project) + " --model " + JSON.stringify(model), { stdio: "ignore" });
+                    child_process_1.execSync(ttBin + " record prompt --tool opencode --session " + JSON.stringify(sessionID) + " --project " + JSON.stringify(project) + " --model " + JSON.stringify(model), { stdio: "ignore" });
                 }
                 catch (_g) {}
                 return;
@@ -69,7 +70,7 @@ function default_1(info) {
                     cache_creation_tokens: tokens.cacheCreation || 0,
                     reasoning_tokens: tokens.reasoning || 0,
                 });
-                var cmd = "tt record response --tool opencode --session " + JSON.stringify(sessionID) + " --model " + JSON.stringify(modelID) + " --tokens " + JSON.stringify(tokensJSON);
+                var cmd = ttBin + " record response --tool opencode --session " + JSON.stringify(sessionID) + " --model " + JSON.stringify(modelID) + " --tokens " + JSON.stringify(tokensJSON);
                 var subs = pendingSubTokens[sessionID];
                 if (subs && Object.keys(subs).length > 0) {
                     var subArr = Object.values(subs).flat();

@@ -1,4 +1,7 @@
 package setup
 
-// Export private function for testing.
-var MergeHooksFile = mergeHooksFile
+// Export private functions for testing.
+var (
+	MergeHooksFile = mergeHooksFile
+	TTCmd          = ttCmd
+)

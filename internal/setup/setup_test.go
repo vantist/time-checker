@@ -81,11 +81,15 @@ func TestSetupClaudeCode_HookCommand(t *testing.T) {
 		}
 	}
 
+	want := setup.TTCmd("record prompt")
 	if cmd == "" {
 		t.Fatal("UserPromptSubmit hook command is empty")
 	}
-	if cmd != "tt record prompt" {
-		t.Errorf("hook command = %q, want %q", cmd, "tt record prompt")
+	if cmd != want {
+		t.Errorf("hook command = %q, want %q", cmd, want)
+	}
+	if !strings.HasPrefix(cmd, "/") && !strings.HasPrefix(cmd, "tt") {
+		t.Errorf("hook command should start with '/' or 'tt', got %q", cmd)
 	}
 	for _, banned := range []string{"$PPID", "$(", "date", "ps ", "awk"} {
 		if strings.Contains(cmd, banned) {
@@ -161,6 +165,7 @@ func TestSetupClaudeCode_ReplacesOldVersion(t *testing.T) {
 	hooks := settings["hooks"].(map[string]any)
 	entries, _ := hooks["UserPromptSubmit"].([]any)
 	ttCount := 0
+	wantNew := setup.TTCmd("record prompt")
 	for _, e := range entries {
 		em, _ := e.(map[string]any)
 		if em["_owner"] == "tt" {
@@ -171,6 +176,9 @@ func TestSetupClaudeCode_ReplacesOldVersion(t *testing.T) {
 				hm, _ := h.(map[string]any)
 				if hm["command"] == "tt record prompt --old" {
 					t.Error("old hook command still present after setup")
+				}
+				if hm["command"] != wantNew {
+					t.Errorf("hook command = %q, want %q", hm["command"], wantNew)
 				}
 			}
 		}
@@ -366,8 +374,10 @@ func TestSetupAntigravity(t *testing.T) {
 	if !ok || len(preInv) != 1 {
 		t.Fatalf("PreInvocation missing or invalid size")
 	}
+	wantPre := setup.TTCmd("record prompt --tool antigravity")
+	wantStop := setup.TTCmd("record response --tool antigravity")
 	preMap := preInv[0].(map[string]any)
-	if preMap["_owner"] != "tt" || preMap["command"] != "tt record prompt --tool antigravity" || preMap["type"] != "command" {
+	if preMap["_owner"] != "tt" || preMap["command"] != wantPre || preMap["type"] != "command" {
 		t.Errorf("PreInvocation hook values unexpected: %v", preMap)
 	}
 
@@ -376,7 +386,7 @@ func TestSetupAntigravity(t *testing.T) {
 		t.Fatalf("Stop missing or invalid size")
 	}
 	stopMap := stop[0].(map[string]any)
-	if stopMap["_owner"] != "tt" || stopMap["command"] != "tt record response --tool antigravity" || stopMap["type"] != "command" {
+	if stopMap["_owner"] != "tt" || stopMap["command"] != wantStop || stopMap["type"] != "command" {
 		t.Errorf("Stop hook values unexpected: %v", stopMap)
 	}
 
@@ -458,12 +468,14 @@ func TestSetupCodex(t *testing.T) {
 		t.Fatal("hooks key missing or wrong type")
 	}
 
+	wantPrompt := setup.TTCmd("record prompt --tool codex")
+	wantStop := setup.TTCmd("record response --tool codex")
 	promptSub, ok := hooksVal["UserPromptSubmit"].([]any)
 	if !ok || len(promptSub) != 1 {
 		t.Fatalf("UserPromptSubmit missing or invalid size")
 	}
 	promptMap := promptSub[0].(map[string]any)
-	if promptMap["_owner"] != "tt" || promptMap["command"] != "tt record prompt --tool codex" || promptMap["type"] != "command" {
+	if promptMap["_owner"] != "tt" || promptMap["command"] != wantPrompt || promptMap["type"] != "command" {
 		t.Errorf("UserPromptSubmit hook values unexpected: %v", promptMap)
 	}
 
@@ -472,7 +484,7 @@ func TestSetupCodex(t *testing.T) {
 		t.Fatalf("Stop missing or invalid size")
 	}
 	stopMap := stop[0].(map[string]any)
-	if stopMap["_owner"] != "tt" || stopMap["command"] != "tt record response --tool codex" || stopMap["type"] != "command" {
+	if stopMap["_owner"] != "tt" || stopMap["command"] != wantStop || stopMap["type"] != "command" {
 		t.Errorf("Stop hook values unexpected: %v", stopMap)
 	}
 
@@ -558,12 +570,14 @@ func TestSetupCopilotFresh(t *testing.T) {
 		t.Fatal("hooks key missing or wrong type")
 	}
 
+	wantPrompt := setup.TTCmd("record prompt --tool copilot-cli")
+	wantStop := setup.TTCmd("record response --tool copilot-cli")
 	promptHooks, ok := hooks["userPromptSubmitted"].([]any)
 	if !ok || len(promptHooks) != 1 {
 		t.Fatalf("userPromptSubmitted missing or wrong size")
 	}
 	pMap := promptHooks[0].(map[string]any)
-	if pMap["_owner"] != "tt" || pMap["type"] != "command" || pMap["command"] != "tt record prompt --tool copilot-cli" {
+	if pMap["_owner"] != "tt" || pMap["type"] != "command" || pMap["command"] != wantPrompt {
 		t.Errorf("unexpected userPromptSubmitted hook: %v", pMap)
 	}
 
@@ -572,7 +586,7 @@ func TestSetupCopilotFresh(t *testing.T) {
 		t.Fatalf("agentStop missing or wrong size")
 	}
 	sMap := stopHooks[0].(map[string]any)
-	if sMap["_owner"] != "tt" || sMap["type"] != "command" || sMap["command"] != "tt record response --tool copilot-cli" {
+	if sMap["_owner"] != "tt" || sMap["type"] != "command" || sMap["command"] != wantStop {
 		t.Errorf("unexpected agentStop hook: %v", sMap)
 	}
 
@@ -656,10 +670,11 @@ func TestSetupCopilotPreservesUserHooks(t *testing.T) {
 	hooks := config["hooks"].(map[string]any)
 	entries, _ := hooks["userPromptSubmitted"].([]any)
 	foundUser, foundTT := false, false
+	wantPrompt := setup.TTCmd("record prompt --tool copilot-cli")
 	for _, e := range entries {
 		em, _ := e.(map[string]any)
 		if em["_owner"] == "tt" {
-			if em["command"] == "tt record prompt --tool copilot-cli" {
+			if em["command"] == wantPrompt {
 				foundTT = true
 			}
 		} else if em["command"] == "user-custom-copilot-hook" {
@@ -702,12 +717,16 @@ func TestSetupCopilotReplacesOldVersion(t *testing.T) {
 	hooks := config["hooks"].(map[string]any)
 	entries, _ := hooks["userPromptSubmitted"].([]any)
 	ttCount := 0
+	wantNew := setup.TTCmd("record prompt --tool copilot-cli")
 	for _, e := range entries {
 		em, _ := e.(map[string]any)
 		if em["_owner"] == "tt" {
 			ttCount++
 			if em["command"] == "tt record prompt --old-args" {
 				t.Error("old hook command still present after setup")
+			}
+			if em["command"] != wantNew {
+				t.Errorf("hook command = %q, want %q", em["command"], wantNew)
 			}
 		}
 	}
@@ -736,11 +755,17 @@ func TestSetupOpencodeFresh(t *testing.T) {
 	if !strings.Contains(content, "message.updated") {
 		t.Error("plugin missing message.updated handler")
 	}
-	if !strings.Contains(content, "tt record prompt") {
-		t.Error("plugin missing tt record prompt call")
+	if !strings.Contains(content, "process.env.TT_BIN") {
+		t.Error("plugin missing TT_BIN env var support")
 	}
-	if !strings.Contains(content, "tt record response") {
-		t.Error("plugin missing tt record response call")
+	if !strings.Contains(content, `ttBin + " record prompt`) {
+		t.Error("plugin missing tt record prompt call via ttBin")
+	}
+	if !strings.Contains(content, `ttBin + " record response`) {
+		t.Error("plugin missing tt record response call via ttBin")
+	}
+	if strings.Contains(content, `"tt record prompt`) {
+		t.Error("plugin should not hardcode 'tt' command, use ttBin variable")
 	}
 }
 

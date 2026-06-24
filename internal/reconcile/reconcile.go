@@ -168,6 +168,13 @@ func reconcileCopilotSession(conn *sql.DB, dt danglingTurn) error {
 		return err
 	}
 
+	// Guard: no model usages means session.shutdown hasn't been written yet
+	// (session still active). Don't settle with 0 tokens — wait for the
+	// next reconcile pass when the shutdown event arrives.
+	if len(result.Usages) == 0 {
+		return nil
+	}
+
 	rows, err := conn.Query(`
 		SELECT id, prompt_at, response_at,
 			(SELECT prompt_at FROM turns t2

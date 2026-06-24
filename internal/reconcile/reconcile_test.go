@@ -1243,6 +1243,97 @@ func TestReconcileCopilot_CrossShutdownLatestCumulative(t *testing.T) {
 		t.Errorf("latest open turn input_tokens = %d, want 1500", t2Input.Int64)
 	}
 }
+// TestReconcileCopilot_NoShutdownYet_DefersSettlement: events.jsonl exists
+// but has no session.shutdown (session still active). reconcile must NOT
+// settle turns with 0 tokens. When shutdown arrives later, the second
+// reconcile pass must pick it up.
+func TestReconcileCopilot_NoShutdownYet_DefersSettlement(t *testing.T) {
+	db := newTestDB(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	const sessionID = "copi-active-session"
+	_, err := db.Exec(`
+		INSERT INTO sessions (id, started_at, process_pid, process_start, tool)
+		VALUES (?, ?, ?, ?, ?)`,
+		sessionID, time.Now().UTC().Format(time.RFC3339), 0, 0, "copilot-cli",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Write events.jsonl WITH session.start but WITHOUT session.shutdown.
+	writeCopilotEvents(t, home, sessionID, []string{
+		`{"type":"session.start","data":{}}`,
+		`{"type":"heartbeat","data":{}}`,
+	})
+
+	base := time.Now().Add(-30 * time.Minute)
+	t1 := insertCopilotTurn(t, db, sessionID, base)
+	t2 := insertCopilotTurn(t, db, sessionID, base.Add(10*time.Minute))
+
+	// First reconcile: session still active, must NOT settle turns.
+	reconcile(db)
+
+	for _, id := range []int64{t1, t2} {
+		var inputTokens sql.NullInt64
+		var respAt sql.NullString
+		err := db.QueryRow("SELECT input_tokens, response_at FROM turns WHERE id=?", id).
+			Scan(&inputTokens, &respAt)
+		if err != nil {
+			t.Fatalf("load turn %d: %v", id, err)
+		}
+		if inputTokens.Valid {
+			t.Errorf("turn %d input_tokens = %v, want NULL (deferred)", id, inputTokens)
+		}
+		if respAt.Valid {
+			t.Errorf("turn %d response_at = %v, want NULL (deferred)", id, respAt)
+		}
+	}
+
+	// Now session ends: append session.shutdown with real tokens.
+	fixture := []string{
+		`{"type":"session.start","data":{}}`,
+		`{"type":"heartbeat","data":{}}`,
+		`{"type":"session.shutdown","data":{"mainModel":"","currentModel":"gpt-5","modelMetrics":{"gpt-5":{"usage":{"inputTokens":2000,"outputTokens":800}}}}}`,
+	}
+	writeCopilotEvents(t, home, sessionID, fixture)
+
+	// Second reconcile: session.shutdown available, must settle now.
+	reconcile(db)
+
+	// Latest open turn (t2) gets cumulative tokens; other turns get 0.
+	var t1Input, t2Input sql.NullInt64
+	var t1Output, t2Output sql.NullInt64
+	var t2Settled bool
+	err = db.QueryRow("SELECT input_tokens, output_tokens FROM turns WHERE id=?", t1).
+		Scan(&t1Input, &t1Output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = db.QueryRow("SELECT input_tokens, output_tokens, subagent_tokens_settled FROM turns WHERE id=?", t2).
+		Scan(&t2Input, &t2Output, &t2Settled)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if t1Input.Int64 != 0 {
+		t.Errorf("non-latest turn input_tokens = %d, want 0", t1Input.Int64)
+	}
+	if t1Output.Int64 != 0 {
+		t.Errorf("non-latest turn output_tokens = %d, want 0", t1Output.Int64)
+	}
+	if t2Input.Int64 != 2000 {
+		t.Errorf("latest turn input_tokens = %d, want 2000", t2Input.Int64)
+	}
+	if t2Output.Int64 != 800 {
+		t.Errorf("latest turn output_tokens = %d, want 800", t2Output.Int64)
+	}
+	if !t2Settled {
+		t.Error("latest turn subagent_tokens_settled should be 1 after second reconcile")
+	}
+}
+
 // transcript path does not exist, reconcile must silently skip the turn.
 func TestReconcileCopilot_TranscriptMissingSilentSkip(t *testing.T) {
 	db := newTestDB(t)
